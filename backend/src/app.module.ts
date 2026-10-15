@@ -1,12 +1,19 @@
-// src/app.module.ts
-import { Module } from '@nestjs/common';
-import { DatabaseModule } from './database/database.module';
-// Import các module khác...
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { AppController } from "./app.controller.js";
+import { AppService } from "./app.service.js";
+import configuration from "./config/configuration.js";
+import { PrismaModule } from "./prisma/prisma.module.js";
 
 @Module({
   imports: [
-    DatabaseModule, // Đưa DatabaseModule vào đây để khởi chạy kết nối chung
-    // Các modules code xong nhớ ghi vào đây
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration],
+    }),
+    PrismaModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

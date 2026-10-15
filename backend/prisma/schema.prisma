@@ -1,72 +1,42 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
-model Role {
-  id          Int       @id @default(autoincrement())
-  code        String    @unique @db.VarChar(30)
-  name        String    @db.VarChar(100)
-  description String?   @db.VarChar(255)
-  isSystem    Boolean?  @default(false) @map("is_system")
-  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz
-
-  users       User[]
-  permissions RolePermission[]
-
-  @@map("roles")
-}
-
-model Permission {
-  id          Int       @id @default(autoincrement())
-  code        String    @unique @db.VarChar(50)
-  description String?   @db.VarChar(255)
-
-  roles       RolePermission[]
-
-  @@map("permissions")
-}
-
-model RolePermission {
-  roleId       Int        @map("role_id")
-  permissionId Int        @map("permission_id")
-  
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@id([roleId, permissionId])
-  @@map("role_permissions")
-}
-
+// =====================================================================
+// 1. NGƯỜI DÙNG (TASK 7 - ĐĂNG KÝ / ĐĂNG NHẬP JWT & TÍCH ĐIỂM)
+// =====================================================================
 model User {
-  id            Int       @id @default(autoincrement())
-  email         String    @unique @db.VarChar(255)
-  passwordHash  String    @map("password_hash") @db.VarChar(255)
-  fullName      String?   @map("full_name") @db.VarChar(255)
-  phone         String?   @db.VarChar(20)
-  roleId        Int?      @map("role_id")
-  isActive      Boolean?  @default(true) @map("is_active")
-  loyaltyPoints Int?      @default(0) @map("loyalty_points")
-  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  id             BigInt   @id @default(autoincrement())
+  email          String   @unique @db.VarChar(255)
+  passwordHash   String   @map("password_hash") @db.VarChar(255)
+  fullName       String   @map("full_name") @db.VarChar(255)
+  phone          String?  @unique @db.VarChar(20)
+  isActive       Boolean  @default(true) @map("is_active")
+  loyaltyPoints  Int      @default(0) @map("loyalty_points")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  role               Role?                @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  carts              Cart[]
-  promotionsOwned    Promotion[]          @relation("PromotionOwner")
-  orders             Order[]
-  promotionUsages    PromotionUsage[]
-  orderStatusChanges OrderStatusHistory[] @relation("OrderStatusChanger")
+  cart             Cart?
+  ownedPromotions  Promotion[]        @relation("PromotionOwner")
+  orders           Order[]
+  promotionUsages  PromotionUsage[]
 
+  @@index([loyaltyPoints], map: "chk_user_points") // Prisma map check constraint dạng index/ghi chú logic
   @@map("users")
 }
 
+// =====================================================================
+// 2. MENU & TỒN KHO (TASK 2, 3, 4 & TASK 10.3 OPTIMISTIC LOCKING)
+// =====================================================================
 model Category {
-  id       Int       @id @default(autoincrement())
-  name     String    @db.VarChar(255)
-  isActive Boolean?  @default(true) @map("is_active")
+  id       BigInt    @id @default(autoincrement())
+  name     String    @unique @db.VarChar(255)
+  isActive Boolean   @default(true) @map("is_active")
 
   products Product[]
 
@@ -74,74 +44,81 @@ model Category {
 }
 
 model Product {
-  id          Int       @id @default(autoincrement())
-  categoryId  Int?      @map("category_id")
-  name        String    @db.VarChar(255)
-  description String?   @db.Text
-  price       Decimal   @db.Decimal(12, 2)
-  imageUrl    String?   @map("image_url") @db.VarChar(500)
-  stock       Int?      @default(0)
-  version     Int?      @default(1)
-  isActive    Boolean?  @default(true) @map("is_active")
-  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  id          BigInt      @id @default(autoincrement())
+  categoryId  BigInt?     @map("category_id")
+  name        String      @db.VarChar(255)
+  description String?     @db.Text
+  price       Decimal     @db.Decimal(12, 2)
+  imageUrl    String?     @map("image_url") @db.VarChar(500)
+  stock       Int         @default(0)
+  version     Int         @default(0)
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  category    Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sizes       ProductSize[]
-  toppings    ProductTopping[]
-  cartItems   CartItem[]
-  orderItems  OrderItem[]
+  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  productSizes     ProductSize[]
+  productToppings  ProductTopping[]
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
 
+  @@index([isActive], map: "idx_products_active")
+  @@index([categoryId], map: "idx_products_category")
   @@map("products")
 }
 
 model ProductSize {
-  id         Int       @id @default(autoincrement())
-  productId  Int       @map("product_id")
-  sizeCode   String    @map("size_code") @db.VarChar(10)
-  extraPrice Decimal?  @default(0) @map("extra_price") @db.Decimal(12, 2)
-  isActive   Boolean?  @default(true) @map("is_active")
+  id         BigInt   @id @default(autoincrement())
+  productId  BigInt   @map("product_id")
+  sizeCode   String   @map("size_code") @db.VarChar(10)
+  extraPrice Decimal  @default(0) @map("extra_price") @db.Decimal(12, 2)
+  isActive   Boolean  @default(true) @map("is_active")
 
-  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   cartItems  CartItem[]
   orderItems OrderItem[]
 
-  @@unique([productId, sizeCode])
+  @@unique([productId, sizeCode], map: "uq_product_size")
+  @@unique([id, productId], map: "uq_size_id_product")
   @@map("product_sizes")
 }
 
 model Topping {
-  id        Int       @id @default(autoincrement())
-  name      String    @db.VarChar(255)
-  price     Decimal   @db.Decimal(12, 2)
-  stock     Int?      @default(0)
-  version   Int?      @default(1)
-  isActive  Boolean?  @default(true) @map("is_active")
-  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz
+  id        BigInt   @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  price     Decimal  @default(0) @db.Decimal(12, 2)
+  stock     Int      @default(0)
+  version   Int      @default(0)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  products         ProductTopping[]
-  cartItemToppings CartItemTopping[]
-  orderItemToppings OrderItemTopping[]
+  productToppings    ProductTopping[]
+  cartItemToppings   CartItemTopping[]
+  orderItemToppings  OrderItemTopping[]
 
   @@map("toppings")
 }
 
 model ProductTopping {
-  productId Int     @map("product_id")
-  toppingId Int     @map("topping_id")
+  productId BigInt @map("product_id")
+  toppingId BigInt @map("topping_id")
 
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  topping   Topping @relation(fields: [toppingId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  topping Topping @relation(fields: [toppingId], references: [id], onDelete: Cascade)
 
   @@id([productId, toppingId])
+  @@index([toppingId], map: "idx_product_toppings_topping")
   @@map("product_toppings")
 }
 
+// =====================================================================
+// 3. GIỎ HÀNG (TASK 5 - THÊM / SỬA / XÓA MÓN TRONG GIỎ)
+// =====================================================================
 model Cart {
-  id        Int       @id @default(autoincrement())
-  userId    Int       @map("user_id")
-  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt   @unique @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   items     CartItem[]
@@ -150,189 +127,211 @@ model Cart {
 }
 
 model CartItem {
-  id            Int       @id @default(autoincrement())
-  cartId        Int       @map("cart_id")
-  productId     Int       @map("product_id")
-  productSizeId Int?      @map("product_size_id")
-  sugarPercent  Int?      @default(100) @map("sugar_percent") @db.SmallInt
-  icePercent    Int?      @default(100) @map("ice_percent") @db.SmallInt
-  note          String?   @db.VarChar(255)
-  quantity      Int       @default(1)
-  unitPrice     Decimal   @map("unit_price") @db.Decimal(12, 2)
-  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz
+  id            BigInt   @id @default(autoincrement())
+  cartId        BigInt   @map("cart_id")
+  productId     BigInt   @map("product_id")
+  productSizeId BigInt?  @map("product_size_id")
+  sugarPercent  Int?     @map("sugar_percent") @db.SmallInt
+  icePercent    Int?     @map("ice_percent") @db.SmallInt
+  note          String?  @db.VarChar(255)
+  quantity      Int
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(12, 2)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   cart          Cart              @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product       Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productSize   ProductSize?      @relation(fields: [productSizeId], references: [id], onDelete: SetNull)
+  product       Product           @relation(fields: [productId], references: [id])
+  productSize   ProductSize?      @relation(fields: [productSizeId, productId], references: [id, productId])
   toppings      CartItemTopping[]
 
+  @@index([cartId], map: "idx_cart_items_cart")
+  @@index([productId], map: "idx_cart_items_product")
   @@map("cart_items")
 }
 
 model CartItemTopping {
-  cartItemId Int @map("cart_item_id")
-  toppingId  Int @map("topping_id")
-  quantity   Int @default(1)
+  cartItemId BigInt @map("cart_item_id")
+  toppingId  BigInt @map("topping_id")
+  quantity   Int    @default(1)
 
   cartItem   CartItem @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
-  topping    Topping  @relation(fields: [toppingId], references: [id], onDelete: Cascade)
+  topping    Topping  @relation(fields: [toppingId], references: [id])
 
   @@id([cartItemId, toppingId])
   @@map("cart_item_toppings")
 }
 
+// =====================================================================
+// 4. KHUYẾN MÃI & ĐỔI ĐIỂM (TASK 10.4)
+// =====================================================================
 model LoyaltyReward {
-  id                Int       @id @default(autoincrement())
-  name              String    @db.VarChar(255)
-  description       String?   @db.Text
-  pointsCost        Int       @map("points_cost")
-  discountType      String    @map("discount_type") @db.VarChar(20)
-  discountValue     Decimal   @map("discount_value") @db.Decimal(12, 2)
-  minOrderAmount    Decimal?  @map("min_order_amount") @db.Decimal(12, 2)
-  maxDiscountAmount Decimal?  @map("max_discount_amount") @db.Decimal(12, 2)
-  validDays         Int?      @map("valid_days")
-  isActive          Boolean?  @default(true) @map("is_active")
-  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamptz
+  id                BigInt   @id @default(autoincrement())
+  name              String   @db.VarChar(255)
+  description       String?  @db.Text
+  pointsCost        Int      @map("points_cost")
+  discountType      String   @map("discount_type") @db.VarChar(20)
+  discountValue     Decimal  @map("discount_value") @db.Decimal(12, 2)
+  minOrderAmount    Decimal  @default(0) @map("min_order_amount") @db.Decimal(12, 2)
+  maxDiscountAmount Decimal? @map("max_discount_amount") @db.Decimal(12, 2)
+  validDays         Int      @default(30) @map("valid_days")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  promotions        Promotion[]
+  promotions Promotion[]
 
   @@map("loyalty_rewards")
 }
 
 model Promotion {
-  id                 Int       @id @default(autoincrement())
+  id                 BigInt    @id @default(autoincrement())
   code               String    @unique @db.VarChar(50)
   name               String    @db.VarChar(255)
   description        String?   @db.Text
   discountType       String    @map("discount_type") @db.VarChar(20)
   discountValue      Decimal   @map("discount_value") @db.Decimal(12, 2)
-  minOrderAmount     Decimal?  @map("min_order_amount") @db.Decimal(12, 2)
+  minOrderAmount     Decimal   @default(0) @map("min_order_amount") @db.Decimal(12, 2)
   maxDiscountAmount  Decimal?  @map("max_discount_amount") @db.Decimal(12, 2)
-  startAt            DateTime? @map("start_at") @db.Timestamptz
-  endAt              DateTime? @map("end_at") @db.Timestamptz
+  startAt            DateTime  @map("start_at") @db.Timestamptz
+  endAt              DateTime  @map("end_at") @db.Timestamptz
   usageLimit         Int?      @map("usage_limit")
   usageLimitPerUser  Int?      @map("usage_limit_per_user")
-  usedCount          Int?      @default(0) @map("used_count")
-  isActive           Boolean?  @default(true) @map("is_active")
-  ownerUserId        Int?      @map("owner_user_id")
-  rewardId           Int?      @map("reward_id")
+  usedCount          Int       @default(0) @map("used_count")
+  isActive           Boolean   @default(true) @map("is_active")
+  ownerUserId        BigInt?   @map("owner_user_id")
+  rewardId           BigInt?   @map("reward_id")
 
-  owner              User?            @relation("PromotionOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  reward             LoyaltyReward?   @relation(fields: [rewardId], references: [id], onDelete: SetNull)
-  orders             Order[]
-  usages             PromotionUsage[]
+  owner             User?            @relation("PromotionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  reward            LoyaltyReward?   @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+  orders            Order[]
+  promotionUsages   PromotionUsage[]
 
+  @@index([ownerUserId], map: "idx_promotions_owner")
+  @@index([rewardId], map: "idx_promotions_reward")
   @@map("promotions")
 }
 
-model Order {
-  id             Int       @id @default(autoincrement())
-  orderCode      String    @unique @map("order_code") @db.VarChar(50)
-  userId         Int?      @map("user_id")
-  status         String    @db.VarChar(30)
-  subtotal       Decimal   @db.Decimal(12, 2)
-  discountAmount Decimal?  @default(0) @map("discount_amount") @db.Decimal(12, 2)
-  pointsEarned   Int?      @default(0) @map("points_earned")
-  total          Decimal   @db.Decimal(12, 2)
-  promotionId    Int?      @map("promotion_id")
-  note           String?   @db.VarChar(500)
-  expiresAt      DateTime? @map("expires_at") @db.Timestamptz
-  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-
-  user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  promotion      Promotion?           @relation(fields: [promotionId], references: [id], onDelete: SetNull)
-  items          OrderItem[]
-  payments       Payment[]
-  statusHistory  OrderStatusHistory[]
-  promotionUsage PromotionUsage[]
-
-  @@map("orders")
-}
-
 model PromotionUsage {
-  id             Int       @id @default(autoincrement())
-  promotionId    Int       @map("promotion_id")
-  userId         Int       @map("user_id")
-  orderId        Int       @map("order_id")
-  discountAmount Decimal   @map("discount_amount") @db.Decimal(12, 2)
-  usedAt         DateTime? @default(now()) @map("used_at") @db.Timestamptz
+  id             BigInt   @id @default(autoincrement())
+  promotionId    BigInt   @map("promotion_id")
+  userId         BigInt   @map("user_id")
+  orderId        BigInt   @unique @map("order_id")
+  discountAmount Decimal  @map("discount_amount") @db.Decimal(12, 2)
+  usedAt         DateTime @default(now()) @map("used_at") @db.Timestamptz
 
-  promotion      Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  promotion      Promotion @relation(fields: [promotionId], references: [id])
+  user           User      @relation(fields: [userId], references: [id])
+  order          Order     @relation(fields: [orderId], references: [id])
 
+  @@index([promotionId, userId], map: "idx_promotion_usage_user")
   @@map("promotion_usages")
 }
 
+// =====================================================================
+// 5. ĐƠN HÀNG & STATE MACHINE (TASK 6, 9, 10.1)
+// =====================================================================
+model Order {
+  id             BigInt    @id @default(autoincrement())
+  orderCode      String    @unique @map("order_code") @db.VarChar(50)
+  userId         BigInt    @map("user_id")
+  status         String    @default("PENDING") @db.VarChar(30)
+  subtotal       Decimal   @default(0) @db.Decimal(12, 2)
+  discountAmount Decimal   @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  pointsEarned   Int       @default(0) @map("points_earned")
+  total          Decimal   @default(0) @db.Decimal(12, 2)
+  promotionId    BigInt?   @map("promotion_id")
+  note           String?   @db.VarChar(500)
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user             User                 @relation(fields: [userId], references: [id])
+  promotion        Promotion?           @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  orderItems       OrderItem[]
+  statusHistory    OrderStatusHistory[]
+  payments         Payment[]
+  promotionUsage   PromotionUsage?
+
+  @@index([userId], map: "idx_orders_user")
+  @@index([status], map: "idx_orders_status")
+  @@index([createdAt], map: "idx_orders_created_at")
+  @@index([userId, createdAt], map: "idx_orders_user_created")
+  @@index([status, expiresAt], map: "idx_orders_expiry")
+  @@map("orders")
+}
+
 model OrderItem {
-  id            Int       @id @default(autoincrement())
-  orderId       Int       @map("order_id")
-  productId     Int?      @map("product_id")
-  productSizeId Int?      @map("product_size_id")
-  productName   String    @map("product_name") @db.VarChar(255)
-  sizeCode      String?   @map("size_code") @db.VarChar(10)
-  sugarPercent  Int?      @map("sugar_percent") @db.SmallInt
-  icePercent    Int?      @map("ice_percent") @db.SmallInt
-  note          String?   @db.VarChar(255)
+  id            BigInt   @id @default(autoincrement())
+  orderId       BigInt   @map("order_id")
+  productId     BigInt   @map("product_id")
+  productSizeId BigInt?  @map("product_size_id")
+  productName   String   @map("product_name") @db.VarChar(255)
+  sizeCode      String?  @map("size_code") @db.VarChar(10)
+  sugarPercent  Int?     @map("sugar_percent") @db.SmallInt
+  icePercent    Int?     @map("ice_percent") @db.SmallInt
+  note          String?  @db.VarChar(255)
   quantity      Int
-  unitPrice     Decimal   @map("unit_price") @db.Decimal(12, 2)
-  lineTotal     Decimal   @map("line_total") @db.Decimal(12, 2)
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(12, 2)
+  lineTotal     Decimal  @map("line_total") @db.Decimal(12, 2)
 
   order         Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product       Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
-  productSize   ProductSize?       @relation(fields: [productSizeId], references: [id], onDelete: SetNull)
+  product       Product            @relation(fields: [productId], references: [id])
+  productSize   ProductSize?       @relation(fields: [productSizeId, productId], references: [id, productId])
   toppings      OrderItemTopping[]
 
+  @@index([orderId], map: "idx_order_items_order")
+  @@index([productId], map: "idx_order_items_product")
   @@map("order_items")
 }
 
 model OrderItemTopping {
-  id           Int      @id @default(autoincrement())
-  orderItemId  Int      @map("order_item_id")
-  toppingId    Int?     @map("topping_id")
-  toppingName  String   @map("topping_name") @db.VarChar(255)
-  toppingPrice Decimal  @map("topping_price") @db.Decimal(12, 2)
-  quantity     Int      @default(1)
+  orderItemId BigInt  @map("order_item_id")
+  toppingId   BigInt  @map("topping_id")
+  toppingName String  @map("topping_name") @db.VarChar(255)
+  toppingPrice Decimal @map("topping_price") @db.Decimal(12, 2)
+  quantity    Int     @default(1)
 
-  orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  topping      Topping?  @relation(fields: [toppingId], references: [id], onDelete: SetNull)
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  topping     Topping   @relation(fields: [toppingId], references: [id])
 
+  @@id([orderItemId, toppingId])
   @@map("order_item_toppings")
 }
 
 model OrderStatusHistory {
-  id        Int       @id @default(autoincrement())
-  orderId   Int       @map("order_id")
-  oldStatus String?   @map("old_status") @db.VarChar(30)
-  newStatus String    @map("new_status") @db.VarChar(30)
-  changedBy Int?      @map("changed_by")
-  changedAt DateTime? @default(now()) @map("changed_at") @db.Timestamptz
-  note      String?   @db.Text
+  id         BigInt   @id @default(autoincrement())
+  orderId    BigInt   @map("order_id")
+  oldStatus  String?  @map("old_status") @db.VarChar(30)
+  newStatus  String   @map("new_status") @db.VarChar(30)
+  changedAt  DateTime @default(now()) @map("changed_at") @db.Timestamptz
+  note       String?  @db.Text
 
-  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  user      User?  @relation("OrderStatusChanger", fields: [changedBy], references: [id], onDelete: SetNull)
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@index([orderId, changedAt], map: "idx_order_status_history_order")
   @@map("order_status_history")
 }
 
+// =====================================================================
+// 6. THANH TOÁN IDEMPOTENT (TASK 8 & TASK 10.2)
+// =====================================================================
 model Payment {
-  id              Int       @id @default(autoincrement())
-  orderId         Int       @map("order_id")
-  idempotencyKey  String?   @unique @map("idempotency_key") @db.VarChar(255)
+  id              BigInt    @id @default(autoincrement())
+  orderId         BigInt    @map("order_id")
+  idempotencyKey  String    @unique @map("idempotency_key") @db.VarChar(255)
   amount          Decimal   @db.Decimal(12, 2)
   method          String    @db.VarChar(30)
   provider        String?   @db.VarChar(50)
-  status          String    @db.VarChar(30)
+  status          String    @default("PENDING") @db.VarChar(30)
   transactionCode String?   @map("transaction_code") @db.VarChar(255)
   failureReason   String?   @map("failure_reason") @db.Text
   rawResponse     Json?     @map("raw_response")
   paidAt          DateTime? @map("paid_at") @db.Timestamptz
   refundedAt      DateTime? @map("refunded_at") @db.Timestamptz
-  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  order           Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order           Order     @relation(fields: [orderId], references: [id])
 
+  @@index([orderId], map: "idx_payments_order")
+  @@unique([provider, transactionCode], map: "uq_payment_gateway_tx")
   @@map("payments")
 }
