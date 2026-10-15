@@ -1,25 +1,19 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import '@/styles/global.css';
-
-const inter = Inter({ subsets: ['latin'] });
+import type { Metadata } from "next";
+import "../styles/globals.css";
 
 export const metadata: Metadata = {
-  title: 'Brew Lite - Coffee Ordering',
-  description: 'Order your favorite coffee easily',
+  title: "BrewLite",
+  description: "Ứng dụng đặt cà phê không dùng tiền mặt",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="vi">
-      <body className={inter.className}>
-        {/* Có thể bọc thêm QueryClientProvider hoặc ToastProvider ở đây */}
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
