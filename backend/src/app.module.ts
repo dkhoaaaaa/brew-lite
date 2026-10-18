@@ -4,6 +4,7 @@ import { AppController } from "./app.controller.js";
 import { AppService } from "./app.service.js";
 import configuration from "./config/configuration.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
+import { ProductsModule } from "./modules/products/products.module.js";
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { PrismaModule } from "./prisma/prisma.module.js";
       load: [configuration],
     }),
     PrismaModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
