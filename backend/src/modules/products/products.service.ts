@@ -1,7 +1,5 @@
-import { Injectable } from '@nestjs/common';
-// Chỉnh đường dẫn cho khớp PrismaService hiện có trong src/prisma/
-import { PrismaService } from '../../prisma/prisma.service.js';
-
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service.js";
 
 @Injectable()
 export class ProductsService {
@@ -20,10 +18,11 @@ export class ProductsService {
       },
     });
 
+    // id là BigInt nên trả dạng chuỗi; giá (Decimal) trả dạng số.
     return products.map((product) => ({
       ...product,
       id: product.id.toString(),
-      price: product.price.toString(),
+      price: product.price.toNumber(),
     }));
   }
 
@@ -67,17 +66,17 @@ export class ProductsService {
       id: product.id.toString(),
       name: product.name,
       description: product.description,
-      price: product.price.toString(),
+      price: product.price.toNumber(),
       imageUrl: product.imageUrl,
       sizes: product.productSizes.map((size) => ({
         id: size.id.toString(),
         sizeCode: size.sizeCode,
-        extraPrice: size.extraPrice.toString(),
+        extraPrice: size.extraPrice.toNumber(),
       })),
       toppings: product.productToppings.map(({ topping }) => ({
         id: topping.id.toString(),
         name: topping.name,
-        price: topping.price.toString(),
+        price: topping.price.toNumber(),
       })),
     };
   }
