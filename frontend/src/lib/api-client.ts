@@ -1,3 +1,4 @@
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -14,7 +15,17 @@ export async function apiClient<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+    const errorText = await response.text();
+
+    console.error("API ERROR:", {
+      url: `${API_URL}${path}`,
+      status: response.status,
+      response: errorText,
+    });
+
+    throw new Error(
+      `API ${response.status}: ${errorText}`
+    );
   }
 
   return response.json() as Promise<T>;

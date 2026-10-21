@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import { BadRequestException } from "@nestjs/common";
-import { OrdersService } from "./orders.service.js";
-import type { CreateOrderDto } from "./dto/create-order.dto.js";
+import { OrdersService } from "../src/modules/orders/orders.service.js";
+import type { CreateOrderDto } from "../src/modules/orders/dto/create-order.dto.js";
 
 const money = (value: number) => ({ toNumber: () => value });
 
