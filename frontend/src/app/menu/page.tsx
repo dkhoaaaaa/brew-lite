@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CartIndicator } from "../../features/cart/CartIndicator";
 import { ProductCard } from "../../features/products/components/ProductCard";
 import { ProductSkeleton } from "../../features/products/components/ProductSkeleton";
-import { CartIndicator } from "../../features/cart/CartIndicator";
 import { getProducts } from "../../lib/products-api";
 import type { ProductSummary } from "../../types/product";
 

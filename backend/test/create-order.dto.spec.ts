@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import "reflect-metadata";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
-import { CreateOrderDto } from "./create-order.dto.js";
+import { CreateOrderDto } from "../src/modules/orders/dto/create-order.dto.js";
 
 async function errorsOf(payload: unknown) {
   return validate(plainToInstance(CreateOrderDto, payload));
