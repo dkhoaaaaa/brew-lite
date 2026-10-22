@@ -1,48 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import { logout } from "../lib/auth-api";
-import { formatErrorMessage } from "../lib/api-client";
-import { OrderResponse, createOrder } from "../lib/orders-api";
 import { useAuth } from "../lib/use-auth";
 
 export default function HomePage() {
   const { user: currentUser, token } = useAuth();
-  const [orderResult, setOrderResult] = useState<OrderResponse | null>(null);
-  const [orderError, setOrderError] = useState<string | null>(null);
-  const [ordering, setOrdering] = useState(false);
-
-  const handleTestOrder = async () => {
-    setOrdering(true);
-    setOrderResult(null);
-    setOrderError(null);
-
-    try {
-      // Gọi API POST /orders - Tự động đính kèm Authorization: Bearer <token> nếu có
-      const res = await createOrder({
-        note: "Đặt cà phê thử nghiệm xác thực JWT",
-        total: 45000,
-        items: [
-          {
-            productId: 1,
-            productName: "Cà phê Sữa Đá BrewLite",
-            sizeCode: "M",
-            quantity: 1,
-            unitPrice: 45000,
-            sugarPercent: 70,
-            icePercent: 100,
-            note: "Ít ngọt",
-          },
-        ],
-      });
-      setOrderResult(res);
-    } catch (err: unknown) {
-      setOrderError(formatErrorMessage(err));
-    } finally {
-      setOrdering(false);
-    }
-  };
 
   const handleLogout = () => {
     logout();
@@ -66,13 +29,13 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Auth Status & JWT Verification Card */}
+      {/* Auth Status & Account Overview Card */}
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-xl shadow border border-stone-200 space-y-4">
           <div className="flex items-center justify-between border-b pb-3">
             <h2 className="text-xl font-bold text-stone-800 flex items-center space-x-2">
               <span>👤</span>
-              <span>Trạng thái xác thực (JWT)</span>
+              <span>Trạng thái tài khoản (JWT)</span>
             </h2>
             {currentUser && (
               <span className="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-semibold">
@@ -128,7 +91,7 @@ export default function HomePage() {
             <div className="space-y-4 text-stone-600">
               <p className="text-sm">
                 Bạn chưa đăng nhập. Hãy đăng ký tài khoản mới hoặc đăng nhập để
-                nhận JWT Access Token.
+                nhận JWT Access Token và trải nghiệm dịch vụ.
               </p>
               <div className="flex space-x-3 pt-2">
                 <Link
@@ -148,58 +111,52 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Test Route POST /orders (Protected by JwtAuthGuard) */}
+        {/* Auth Module Overview Card */}
         <div className="bg-white p-6 rounded-xl shadow border border-stone-200 space-y-4">
           <div className="border-b pb-3">
             <h2 className="text-xl font-bold text-stone-800 flex items-center space-x-2">
-              <span>🛡️</span>
-              <span>Kiểm tra JwtAuthGuard (POST /orders)</span>
+              <span>🔐</span>
+              <span>Module Xác thực (Task 7)</span>
             </h2>
             <p className="text-xs text-stone-500 mt-1">
-              Route POST /orders được bảo vệ nghiêm ngặt. Client sẽ tự động đính
-              kèm Authorization: Bearer &lt;token&gt;.
+              Phân hệ quản lý người dùng, đăng ký, đăng nhập và bảo mật JWT.
             </p>
           </div>
 
-          <p className="text-sm text-stone-600">
-            Bấm nút bên dưới để gửi request <code>POST /orders</code> qua{" "}
-            <code>apiClient</code>:
-          </p>
-
-          <button
-            onClick={handleTestOrder}
-            disabled={ordering}
-            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2.5 px-4 rounded-lg shadow transition disabled:opacity-50 cursor-pointer"
-          >
-            {ordering
-              ? "Đang gửi yêu cầu..."
-              : "Thử tạo đơn hàng (POST /orders)"}
-          </button>
-
-          {orderResult && (
-            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800 space-y-1">
-              <p className="font-bold flex items-center space-x-1">
-                <span>✅</span>
-                <span>Tạo đơn hàng thành công!</span>
-              </p>
-              <p>
-                Mã đơn: <strong>{orderResult.orderCode}</strong>
-              </p>
-              <p>Trạng thái: {orderResult.status}</p>
-              <p>Tổng tiền: {Number(orderResult.total).toLocaleString()} VNĐ</p>
-              <p>Điểm thưởng nhận được: +{orderResult.pointsEarned} điểm</p>
+          <div className="space-y-3 text-sm text-stone-600">
+            <div className="flex items-start space-x-2.5">
+              <span className="text-emerald-600 font-bold">✓</span>
+              <div>
+                <strong className="text-stone-800">Đăng ký (POST /auth/register):</strong>{" "}
+                Tạo tài khoản khách hàng mới, mã hóa mật khẩu bảo mật bằng thư viện <code>bcrypt</code>.
+              </div>
             </div>
-          )}
 
-          {orderError && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 space-y-1">
-              <p className="font-bold flex items-center space-x-1">
-                <span>⛔</span>
-                <span>Từ chối truy cập (JwtAuthGuard chặn)</span>
-              </p>
-              <p className="font-mono text-xs">{orderError}</p>
+            <div className="flex items-start space-x-2.5">
+              <span className="text-emerald-600 font-bold">✓</span>
+              <div>
+                <strong className="text-stone-800">Đăng nhập (POST /auth/login):</strong>{" "}
+                Kiểm tra thông tin đăng nhập và cấp <code>accessToken</code> chuẩn JWT thời hạn 7 ngày.
+              </div>
             </div>
-          )}
+
+            <div className="flex items-start space-x-2.5">
+              <span className="text-emerald-600 font-bold">✓</span>
+              <div>
+                <strong className="text-stone-800">Bảo vệ API (JwtAuthGuard):</strong>{" "}
+                Cung cấp Guard và Strategy để bảo vệ các endpoint yêu cầu quyền đăng nhập.
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-2.5">
+              <span className="text-emerald-600 font-bold">✓</span>
+              <div>
+                <strong className="text-stone-800">Client tự động gửi Token:</strong>{" "}
+                Frontend lưu token vào <code>localStorage</code> và tự động gắn header{" "}
+                <code>Authorization: Bearer &lt;token&gt;</code> cho mọi yêu cầu gọi API.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
