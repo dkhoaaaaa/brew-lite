@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
 
 export class RegisterDto {
   @IsEmail({}, { message: "Email không hợp lệ" })
@@ -15,4 +15,13 @@ export class RegisterDto {
   @IsOptional()
   @IsString({ message: "Số điện thoại phải là chuỗi ký tự" })
   phone?: string;
+}
+
+export class LoginDto {
+  @IsEmail({}, { message: "Email không hợp lệ" })
+  email: string;
+
+  @IsString({ message: "Mật khẩu phải là chuỗi ký tự" })
+  @IsNotEmpty({ message: "Mật khẩu không được để trống" })
+  password: string;
 }

@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { logout } from "../lib/auth-api";
-import { useAuth } from "../lib/use-auth";
+import { logout, useAuth } from "../lib/auth";
 
 export default function HomePage() {
   const { user: currentUser, token } = useAuth();

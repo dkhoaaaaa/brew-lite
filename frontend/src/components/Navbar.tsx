@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { logout } from "../lib/auth-api";
-import { useAuth } from "../lib/use-auth";
+import { logout, useAuth } from "../lib/auth";
 
 export default function Navbar() {
   const router = useRouter();

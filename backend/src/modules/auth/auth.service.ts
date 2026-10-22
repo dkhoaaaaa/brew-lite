@@ -7,8 +7,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import bcrypt from "bcrypt";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import { LoginDto } from "./dto/login.dto.js";
-import { RegisterDto } from "./dto/register.dto.js";
+import { LoginDto, RegisterDto } from "./auth.dto.js";
 
 const SALT_ROUNDS = 10;
 
@@ -51,21 +50,23 @@ export class AuthService {
         passwordHash,
         fullName: dto.fullName.trim(),
         phone: dto.phone?.trim() || null,
+        isActive: true,
+        loyaltyPoints: 0,
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        loyaltyPoints: true,
+        createdAt: true,
       },
     });
 
-    const payload = {
-      sub: user.id.toString(),
-      email: user.email,
-      fullName: user.fullName,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = await this.generateToken(user.id.toString(), user.email, user.fullName);
 
     return {
       message: "Đăng ký tài khoản thành công",
-      accessToken,
-      access_token: accessToken,
       user: {
         id: user.id.toString(),
         email: user.email,
@@ -74,11 +75,13 @@ export class AuthService {
         loyaltyPoints: user.loyaltyPoints,
         createdAt: user.createdAt,
       },
+      accessToken,
+      access_token: accessToken,
     };
   }
 
   /**
-   * Đăng nhập người dùng và trả về JWT Access Token chuẩn.
+   * Đăng nhập với email và mật khẩu, trả về JWT Access Token.
    */
   async login(dto: LoginDto) {
     const normalizedEmail = dto.email.toLowerCase().trim();
@@ -92,30 +95,19 @@ export class AuthService {
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException("Tài khoản đã bị vô hiệu hóa");
+      throw new UnauthorizedException("Tài khoản của bạn đã bị khóa");
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      dto.password,
-      user.passwordHash,
-    );
-
+    // So sánh mật khẩu bằng bcrypt
+    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException("Email hoặc mật khẩu không chính xác");
     }
 
-    const payload = {
-      sub: user.id.toString(),
-      email: user.email,
-      fullName: user.fullName,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = await this.generateToken(user.id.toString(), user.email, user.fullName);
 
     return {
       message: "Đăng nhập thành công",
-      accessToken,
-      access_token: accessToken,
       user: {
         id: user.id.toString(),
         email: user.email,
@@ -123,40 +115,50 @@ export class AuthService {
         phone: user.phone,
         loyaltyPoints: user.loyaltyPoints,
       },
+      accessToken,
+      access_token: accessToken,
     };
   }
 
   /**
-   * Lấy thông tin tài khoản hiện tại từ userId.
+   * Lấy thông tin user hiện tại.
    */
-  async getProfile(userId: string) {
-    let id: bigint;
-    try {
-      id = BigInt(userId);
-    } catch {
-      throw new NotFoundException("Mã người dùng không hợp lệ");
-    }
-
+  async getProfile(userIdStr: string) {
+    const userId = BigInt(userIdStr);
     const user = await this.prisma.user.findUnique({
-      where: { id },
+      where: { id: userId },
       select: {
         id: true,
         email: true,
         fullName: true,
         phone: true,
         loyaltyPoints: true,
-        isActive: true,
         createdAt: true,
       },
     });
 
     if (!user) {
-      throw new NotFoundException("Không tìm thấy thông tin người dùng");
+      throw new NotFoundException("Không tìm thấy người dùng");
     }
 
     return {
-      ...user,
       id: user.id.toString(),
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone,
+      loyaltyPoints: user.loyaltyPoints,
+      createdAt: user.createdAt,
     };
+  }
+
+  /**
+   * Ký JWT Access Token.
+   */
+  private async generateToken(sub: string, email: string, fullName: string): Promise<string> {
+    return this.jwtService.sign({
+      sub,
+      email,
+      fullName,
+    });
   }
 }

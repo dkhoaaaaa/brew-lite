@@ -1,4 +1,4 @@
-import { getAccessToken } from "./auth-token";
+import { getAccessToken } from "./auth";
 
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";

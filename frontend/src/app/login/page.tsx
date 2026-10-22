@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { login } from "../../lib/auth-api";
+import { login } from "../../lib/auth";
 import { formatErrorMessage } from "../../lib/api-client";
 
 export default function LoginPage() {
