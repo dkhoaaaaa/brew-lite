@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { CartIndicator } from "../features/cart/CartIndicator";
+import Navbar from "../components/Navbar";
 import { CartProvider } from "../features/cart/cart-store";
 import "../styles/global.css";
 
@@ -16,16 +15,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body>
+      <body className="bg-stone-50 min-h-screen flex flex-col">
         <CartProvider>
-          <nav aria-label="Điều hướng chính" className="site-nav">
-            <Link className="site-nav__brand" href="/">BrewLite<span>.</span></Link>
-            <div className="site-nav__links">
-              <Link href="/menu">Menu</Link>
-              <CartIndicator />
-            </div>
-          </nav>
-          {children}
+          <Navbar />
+          <main className="flex-1">{children}</main>
         </CartProvider>
       </body>
     </html>

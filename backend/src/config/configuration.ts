@@ -1,5 +1,5 @@
 export default () => ({
-  port: Number(process.env.PORT ?? 3000),
+  port: Number(process.env.PORT ?? 3001),
 
   database: {
     url: process.env.DATABASE_URL,
