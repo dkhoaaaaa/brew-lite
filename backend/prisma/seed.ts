@@ -1,4 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client.js";
 
@@ -97,6 +98,29 @@ const promotionData = [
   { code: "SUMMER18", name: "Ưu đãi 18%", description: "Giảm 18% cho đơn từ 90.000đ.", discountType: "PERCENT", discountValue: "18", minOrderAmount: "90000", maxDiscountAmount: "35000", usageLimit: 300 },
   { code: "FRIEND25K", name: "Giảm 25.000đ", description: "Giảm 25.000đ cho đơn từ 150.000đ.", discountType: "FIXED", discountValue: "25000", minOrderAmount: "150000", maxDiscountAmount: "25000", usageLimit: 200 },
   { code: "BIGORDER30", name: "Giảm 30.000đ", description: "Giảm 30.000đ cho đơn từ 200.000đ.", discountType: "FIXED", discountValue: "30000", minOrderAmount: "200000", maxDiscountAmount: "30000", usageLimit: 150 },
+] as const;
+
+// ======================================================
+// TÀI KHOẢN MẪU - BREWLITE
+// ======================================================
+
+const accountData = [
+  {
+    email: "example@example.com",
+    password: "Example@123",
+    fullName: "Nguyễn Văn Example",
+    phone: null,
+    loyaltyPoints: 0,
+    isActive: true,
+  },
+  {
+    email: "customer1@example.com",
+    password: "Customer@123",
+    fullName: "Nguyễn Văn A",
+    phone: null,
+    loyaltyPoints: 200,
+    isActive: true,
+  },
 ] as const;
 
 function assertNoDuplicateNames() {
@@ -239,7 +263,57 @@ async function main() {
     });
   }
 
-  console.log(`Seed hoàn tất: ${categories.size} danh mục, ${products.size} món, ${toppings.size} topping, ${promotionData.length} mã khuyến mãi.`);
+  // ======================================================
+// SEED TÀI KHOẢN MẪU
+// ======================================================
+
+  console.log("Bắt đầu seed tài khoản mẫu...");
+
+  if (process.env.NODE_ENV !== "production") {
+    for (const account of accountData) {
+      const existingUser = await prisma.user.findUnique({
+        where: {
+          email: account.email,
+        },
+      });
+
+      if (existingUser) {
+        console.log(`Tài khoản đã tồn tại: ${account.email}`);
+        continue;
+      }
+
+      const passwordHash = await bcrypt.hash(account.password, 10);
+
+      await prisma.user.create({
+        data: {
+          email: account.email,
+          passwordHash,
+          fullName: account.fullName,
+          phone: account.phone,
+          loyaltyPoints: account.loyaltyPoints,
+          isActive: account.isActive,
+        },
+      });
+
+      console.log(`Đã tạo tài khoản: ${account.email}`);
+    }
+
+    console.log(`Đã xử lý ${accountData.length} tài khoản mẫu.`);
+  } else {
+    console.log("Bỏ qua tài khoản mẫu trong môi trường production.");
+  }
+
+  console.log(`
+    ========================================
+          SEED BREWLITE HOÀN TẤT
+    ========================================
+    Danh mục       : ${categories.size}
+    Sản phẩm       : ${products.size}
+    Topping        : ${toppings.size}
+    Khuyến mãi     : ${promotionData.length}
+    Tài khoản mẫu  : ${process.env.NODE_ENV !== "production" ? accountData.length : 0}
+    ========================================
+  `);
 }
 
 main()
