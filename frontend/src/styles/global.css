@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 :root {
   --background: #f4f1e9;
   --foreground: #17231c;
@@ -9,6 +7,16 @@
   --muted: #667068;
   --line: #d8d8cb;
   --paper: #fbfaf6;
+  /* Landing Page */
+  --lp-cream: #E7DECE;
+  --lp-warm-white: #F7F5F1;
+  --lp-espresso: #30251D;
+  --lp-coffee: #76513B;
+  --lp-dark-coffee: #38291E;
+  --lp-border: #D8CFC2;
+  /* Fonts */
+  --font-sans: var(--font-sans), 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: var(--font-heading), 'Merriweather', 'Noto Serif', Georgia, serif;
 }
 
 * {
@@ -24,7 +32,7 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
 }
 
 button,
@@ -37,34 +45,169 @@ a {
   text-decoration: none;
 }
 
+/* ─── SITE NAV ──────────────────────────────────────────────── */
 .site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: var(--lp-dark-coffee, #38291E);
+  color: #E7DECE;
+  border-bottom: 1px solid rgba(216, 207, 194, 0.12);
+}
+
+.site-nav__inner {
   display: flex;
   min-height: 64px;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 0 max(24px, calc((100vw - 1240px) / 2));
-  border-bottom: 1px solid var(--line);
-  background: var(--paper);
+  gap: 16px;
+  padding: 0 max(24px, calc((100vw - 1200px) / 2));
 }
 
 .site-nav__brand {
-  color: var(--green-dark);
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 25px;
+  font-size: 22px;
+  font-weight: 400;
+  color: #E7DECE;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
 }
 
 .site-nav__brand span {
-  color: var(--orange);
+  opacity: 0.55;
 }
 
 .site-nav__links {
   display: flex;
   align-items: center;
-  gap: 24px;
-  color: var(--green);
+  gap: 32px;
+}
+
+.site-nav__link {
   font-size: 13px;
+  font-weight: 600;
+  color: rgba(231, 222, 206, 0.65);
+  letter-spacing: 0.03em;
+  transition: color 150ms ease;
+}
+
+.site-nav__link:hover {
+  color: #E7DECE;
+}
+
+.site-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Icon buttons (Cart, Profile) */
+.nav-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: rgba(231, 222, 206, 0.75);
+  border-radius: 4px;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.nav-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #E7DECE;
+}
+
+.nav-icon-btn__badge {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #E7DECE;
+  color: #30251D;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Auth text buttons in Navbar */
+.nav-auth-btn {
+  padding: 7px 14px;
+  font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  border: none;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+  white-space: nowrap;
+}
+
+.nav-auth-btn--ghost {
+  background: transparent;
+  color: rgba(231, 222, 206, 0.7);
+}
+
+.nav-auth-btn--ghost:hover {
+  color: #E7DECE;
+}
+
+.nav-auth-btn--solid {
+  background: #E7DECE;
+  color: #30251D;
+}
+
+.nav-auth-btn--solid:hover {
+  background: #fff;
+}
+
+/* Mobile hamburger toggle */
+.nav-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: none;
+  color: #E7DECE;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Mobile dropdown */
+.site-nav__mobile {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(216, 207, 194, 0.1);
+  background: var(--lp-dark-coffee, #38291E);
+}
+
+.site-nav__mobile-link {
+  display: block;
+  padding: 14px max(24px, calc((100vw - 1200px) / 2));
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(231, 222, 206, 0.8);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms ease, color 150ms ease;
+  width: 100%;
+}
+
+.site-nav__mobile-link:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #E7DECE;
 }
 
 .cart-indicator {
@@ -836,7 +979,7 @@ a {
 }
 
 @media (max-width: 680px) {
-  .site-nav {
+  .site-nav__inner {
     min-height: 58px;
     padding: 0 16px;
   }
