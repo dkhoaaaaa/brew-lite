@@ -18,11 +18,10 @@ export class ProductsService {
       },
     });
 
-    // id là BigInt nên trả dạng chuỗi; giá (Decimal) trả dạng số.
     return products.map((product) => ({
       ...product,
       id: product.id.toString(),
-      price: product.price.toNumber(),
+      price: product.price.toString(),
     }));
   }
 
@@ -66,17 +65,17 @@ export class ProductsService {
       id: product.id.toString(),
       name: product.name,
       description: product.description,
-      price: product.price.toNumber(),
+      price: product.price.toString(),
       imageUrl: product.imageUrl,
       sizes: product.productSizes.map((size) => ({
         id: size.id.toString(),
         sizeCode: size.sizeCode,
-        extraPrice: size.extraPrice.toNumber(),
+        extraPrice: size.extraPrice.toString(),
       })),
       toppings: product.productToppings.map(({ topping }) => ({
         id: topping.id.toString(),
         name: topping.name,
-        price: topping.price.toNumber(),
+        price: topping.price.toString(),
       })),
     };
   }

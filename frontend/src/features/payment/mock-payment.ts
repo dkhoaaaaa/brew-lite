@@ -6,11 +6,24 @@ export type MockPaymentResult = {
   message: string;
 };
 
-export async function runMockPayment(
-  method: MockPaymentMethod,
-  outcome: MockPaymentOutcome,
-): Promise<MockPaymentResult> {
-  await new Promise((resolve) => window.setTimeout(resolve, 450));
+export function isMockPaymentMethod(value: unknown): value is MockPaymentMethod {
+  return value === "E_WALLET" || value === "BANK_CARD";
+}
+
+export function isMockPaymentOutcome(value: unknown): value is MockPaymentOutcome {
+  return value === "success" || value === "failure";
+}
+
+export function createMockPaymentResult(
+  method: unknown,
+  outcome: unknown,
+): MockPaymentResult {
+  if (!isMockPaymentMethod(method)) {
+    throw new Error("Vui lòng chọn phương thức thanh toán mô phỏng.");
+  }
+  if (!isMockPaymentOutcome(outcome)) {
+    throw new Error("Kết quả mô phỏng không hợp lệ.");
+  }
 
   return {
     outcome: outcome === "success" ? "SIMULATED_SUCCESS" : "SIMULATED_FAILURE",
@@ -19,6 +32,15 @@ export async function runMockPayment(
         ? `Mô phỏng thanh toán ${methodLabel(method)} thành công.`
         : `Mô phỏng thanh toán ${methodLabel(method)} thất bại.`,
   };
+}
+
+export async function runMockPayment(
+  method: unknown,
+  outcome: unknown,
+): Promise<MockPaymentResult> {
+  const result = createMockPaymentResult(method, outcome);
+  await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 450));
+  return result;
 }
 
 function methodLabel(method: MockPaymentMethod): string {
