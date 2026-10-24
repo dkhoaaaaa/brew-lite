@@ -18,8 +18,7 @@ export class ProductsController {
 
   @Get(":id")
   async findOne(@Param("id") id: string) {
-    // Tối đa 18 chữ số để BigInt không vượt giới hạn của PostgreSQL (trả 400 thay vì 500).
-    if (!/^\d{1,18}$/.test(id)) {
+    if (!/^\d+$/.test(id)) {
       throw new BadRequestException("Product id must be a positive integer.");
     }
 

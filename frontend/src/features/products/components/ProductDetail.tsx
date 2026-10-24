@@ -42,6 +42,7 @@ function ProductDetailView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const cart = useCart();
 
@@ -110,6 +111,16 @@ function ProductDetailView({
 
   function addToCart() {
     setNotice(null);
+    if (!selectedSize) {
+      setSelectionError(
+        currentProduct.sizes.length > 0
+          ? "Vui lòng chọn size trước khi thêm món vào giỏ."
+          : "Sản phẩm chưa có size khả dụng từ API nên chưa thể thêm vào giỏ.",
+      );
+      return;
+    }
+    setSelectionError(null);
+
     const addItem = onAddToCart ?? cart.addItem;
     addItem({
       productId: currentProduct.id,
@@ -143,7 +154,10 @@ function ProductDetailView({
           <SizeSelector
             sizes={product.sizes}
             selectedSizeId={selectedSizeId}
-            onChange={setSelectedSizeId}
+            onChange={(sizeId) => {
+              setSelectedSizeId(sizeId);
+              setSelectionError(null);
+            }}
           />
           <ToppingSelector
             toppings={product.toppings}
@@ -160,6 +174,7 @@ function ProductDetailView({
               Thêm vào giỏ <span aria-hidden="true">+</span>
             </button>
           </div>
+          {selectionError && <p className="inline-notice" role="alert">{selectionError}</p>}
           {notice && <p className="inline-notice" role="status">{notice}</p>}
           {notice && <Link className="text-button" href="/cart">Xem giỏ hàng</Link>}
           <p className="price-disclaimer">Giá dự kiến từ tùy chọn hiện có; backend sẽ xác minh lại khi tạo đơn.</p>
