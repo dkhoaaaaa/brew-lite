@@ -1,13 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { register } from "../../lib/auth";
 import { formatErrorMessage } from "../../lib/api-client";
 
 export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[80vh] flex items-center justify-center">
+          <p className="text-stone-500">Đang tải...</p>
+        </div>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
+  );
+}
+
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -43,9 +60,9 @@ export default function RegisterPage() {
 
       setSuccess(true);
       setTimeout(() => {
-        router.push("/");
+        router.push(redirectUrl);
         router.refresh();
-      }, 1000);
+      }, 500);
     } catch (err: unknown) {
       setError(formatErrorMessage(err));
     } finally {
@@ -53,11 +70,15 @@ export default function RegisterPage() {
     }
   };
 
+  const loginHref =
+    redirectUrl && redirectUrl !== "/"
+      ? `/login?redirect=${encodeURIComponent(redirectUrl)}`
+      : "/login";
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-amber-100">
         <div>
-          <div className="flex justify-center text-4xl mb-2">☕</div>
           <h2 className="text-center text-3xl font-extrabold text-stone-900">
             Tạo tài khoản mới
           </h2>
@@ -74,7 +95,7 @@ export default function RegisterPage() {
 
         {success && (
           <div className="bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded text-sm text-emerald-700">
-            Đăng ký thành công! Đang đăng nhập tự động...
+            Đăng ký thành công! Đang chuyển hướng...
           </div>
         )}
 
@@ -150,7 +171,7 @@ export default function RegisterPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
+              className="w-full px-3.5 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
               placeholder="••••••••"
             />
           </div>
@@ -169,7 +190,7 @@ export default function RegisterPage() {
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
+              className="w-full px-3.5 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
               placeholder="••••••••"
             />
           </div>
@@ -187,7 +208,7 @@ export default function RegisterPage() {
           <div className="text-center text-sm text-stone-600">
             Đã có tài khoản?{" "}
             <Link
-              href="/login"
+              href={loginHref}
               className="font-medium text-amber-700 hover:text-amber-800 hover:underline"
             >
               Đăng nhập tại đây

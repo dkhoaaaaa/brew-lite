@@ -1,13 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { login } from "../../lib/auth";
 import { formatErrorMessage } from "../../lib/api-client";
 
 export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[80vh] flex items-center justify-center">
+          <p className="text-stone-500">Đang tải...</p>
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,9 +40,9 @@ export default function LoginPage() {
       await login({ email, password });
       setSuccess(true);
       setTimeout(() => {
-        router.push("/");
+        router.push(redirectUrl);
         router.refresh();
-      }, 1000);
+      }, 500);
     } catch (err: unknown) {
       setError(formatErrorMessage(err));
     } finally {
@@ -33,11 +50,15 @@ export default function LoginPage() {
     }
   };
 
+  const registerHref =
+    redirectUrl && redirectUrl !== "/"
+      ? `/register?redirect=${encodeURIComponent(redirectUrl)}`
+      : "/register";
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-amber-100">
         <div>
-          <div className="flex justify-center text-4xl mb-2">☕</div>
           <h2 className="text-center text-3xl font-extrabold text-stone-900">
             Đăng nhập tài khoản
           </h2>
@@ -114,7 +135,7 @@ export default function LoginPage() {
           <div className="text-center text-sm text-stone-600">
             Chưa có tài khoản?{" "}
             <Link
-              href="/register"
+              href={registerHref}
               className="font-medium text-amber-700 hover:text-amber-800 hover:underline"
             >
               Đăng ký ngay

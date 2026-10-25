@@ -6,121 +6,6 @@ import { useState } from "react";
 import { logout, useAuth } from "../lib/auth";
 import { useCart } from "../features/cart/cart-store";
 
-// ─── SVG ICONS ───────────────────────────────────────────────────────────────
-
-function CartIcon({ count }: { count: number }) {
-  return (
-    <Link
-      href="/cart"
-      aria-label={`Giỏ hàng, ${count} sản phẩm`}
-      className="nav-icon-btn"
-    >
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 20 20"
-        fill="none"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path
-          d="M2.5 3h1.8l2.2 8.6a1 1 0 00.97.74h6.56a1 1 0 00.96-.72L16.5 5.5H5"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="8.5" cy="17" r="1.3" fill="currentColor" />
-        <circle cx="14.5" cy="17" r="1.3" fill="currentColor" />
-      </svg>
-      {count > 0 && (
-        <span className="nav-icon-btn__badge" aria-hidden="true">
-          {count > 9 ? "9+" : count}
-        </span>
-      )}
-    </Link>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <Link
-      href="/menu"
-      aria-label="Tìm kiếm món trong thực đơn"
-      className="nav-icon-btn"
-    >
-      <svg
-        width="19"
-        height="19"
-        viewBox="0 0 20 20"
-        fill="none"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <circle cx="9" cy="9" r="5.5" stroke="currentColor" strokeWidth="1.5" />
-        <path
-          d="M13.5 13.5L18 18"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    </Link>
-  );
-}
-
-function ProfileIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle cx="10" cy="7.5" r="3.25" stroke="currentColor" strokeWidth="1.4" />
-      <path
-        d="M3.5 17.5c0-3.59 2.91-6.5 6.5-6.5s6.5 2.91 6.5 6.5"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function HamburgerIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 22 22"
-      fill="none"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {open ? (
-        <path
-          d="M5 5l12 12M17 5L5 17"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      ) : (
-        <path
-          d="M3 6.5h16M3 11h16M3 15.5h16"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      )}
-    </svg>
-  );
-}
-
-// ─── NAVBAR ───────────────────────────────────────────────────────────────────
-
 export default function Navbar() {
   const router = useRouter();
   const { user: currentUser } = useAuth();
@@ -159,29 +44,44 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* Actions: icons + auth */}
-        <div className="site-nav__actions">
-          {/* Search icon */}
-          <SearchIcon />
+        {/* Actions: text-based buttons */}
+        <div className="site-nav__actions flex items-center gap-3">
+          {/* Tìm kiếm */}
+          <Link
+            href="/menu"
+            className="nav-auth-btn nav-auth-btn--ghost text-xs"
+          >
+            Tìm kiếm
+          </Link>
 
-          {/* Cart icon – luôn hiển thị */}
-          <CartIcon count={itemCount} />
+          {/* Giỏ hàng */}
+          <Link
+            href="/cart"
+            aria-label={`Giỏ hàng, ${itemCount} sản phẩm`}
+            className="nav-auth-btn nav-auth-btn--ghost text-xs relative"
+          >
+            Giỏ hàng
+            {itemCount > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-xs font-bold bg-amber-600 text-white">
+                {itemCount > 9 ? "9+" : itemCount}
+              </span>
+            )}
+          </Link>
 
           {currentUser ? (
             <>
-              {/* Profile icon – ẩn trên mobile (có trong mobile menu) */}
+              {/* Tài khoản */}
               <Link
                 href="/profile"
-                aria-label={`Tài khoản của ${currentUser.fullName}`}
-                className="nav-icon-btn nav-icon-btn--profile"
+                className="nav-auth-btn nav-auth-btn--ghost text-xs"
               >
-                <ProfileIcon />
+                Tài khoản
               </Link>
 
-              {/* Đăng xuất – ẩn trên mobile */}
+              {/* Đăng xuất */}
               <button
                 onClick={handleLogout}
-                className="nav-auth-btn nav-auth-btn--ghost"
+                className="nav-auth-btn nav-auth-btn--ghost text-xs"
                 type="button"
               >
                 Đăng xuất
@@ -189,31 +89,34 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              {/* Đăng nhập – ẩn trên mobile */}
-              <Link href="/login" className="nav-auth-btn nav-auth-btn--ghost">
+              {/* Đăng nhập */}
+              <Link
+                href={itemCount > 0 ? `/login?redirect=${encodeURIComponent("/cart?autoCheckout=true")}` : "/login"}
+                className="nav-auth-btn nav-auth-btn--ghost text-xs"
+              >
                 Đăng nhập
               </Link>
 
-              {/* Đăng ký – ẩn trên mobile */}
+              {/* Đăng ký */}
               <Link
-                href="/register"
-                className="nav-auth-btn nav-auth-btn--solid"
+                href={itemCount > 0 ? `/register?redirect=${encodeURIComponent("/cart?autoCheckout=true")}` : "/register"}
+                className="nav-auth-btn nav-auth-btn--solid text-xs"
               >
                 Đăng ký
               </Link>
             </>
           )}
 
-          {/* Hamburger – chỉ hiển thị trên mobile */}
+          {/* Hamburger toggle dạng text trên mobile */}
           <button
-            className="nav-hamburger"
+            className="nav-hamburger text-xs font-bold px-2 py-1 border border-stone-600 rounded text-stone-200 sm:hidden"
             onClick={() => setMobileOpen((prev) => !prev)}
             aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
             aria-expanded={mobileOpen}
             aria-controls="site-mobile-menu"
             type="button"
           >
-            <HamburgerIcon open={mobileOpen} />
+            {mobileOpen ? "Đóng" : "Menu"}
           </button>
         </div>
       </div>
@@ -242,6 +145,14 @@ export default function Navbar() {
           >
             Thực đơn
           </Link>
+          <Link
+            href="/cart"
+            className="site-nav__mobile-link"
+            onClick={closeMobile}
+            role="menuitem"
+          >
+            Giỏ hàng ({itemCount})
+          </Link>
 
           {currentUser ? (
             <>
@@ -262,7 +173,7 @@ export default function Navbar() {
                 Tài khoản
               </Link>
               <button
-                className="site-nav__mobile-link"
+                className="site-nav__mobile-link text-left"
                 onClick={handleLogout}
                 type="button"
                 role="menuitem"
@@ -273,7 +184,7 @@ export default function Navbar() {
           ) : (
             <>
               <Link
-                href="/login"
+                href={itemCount > 0 ? `/login?redirect=${encodeURIComponent("/cart?autoCheckout=true")}` : "/login"}
                 className="site-nav__mobile-link"
                 onClick={closeMobile}
                 role="menuitem"
@@ -281,7 +192,7 @@ export default function Navbar() {
                 Đăng nhập
               </Link>
               <Link
-                href="/register"
+                href={itemCount > 0 ? `/register?redirect=${encodeURIComponent("/cart?autoCheckout=true")}` : "/register"}
                 className="site-nav__mobile-link"
                 onClick={closeMobile}
                 role="menuitem"

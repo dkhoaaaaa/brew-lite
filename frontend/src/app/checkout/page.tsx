@@ -5,6 +5,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Toast } from "../../components/Toast";
 import { useCart } from "../../features/cart/cart-store";
+import { useAuth } from "../../lib/auth";
 import {
   isMockPaymentMethod,
   type MockPaymentMethod,
@@ -48,6 +49,7 @@ function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
+  const { isAuthenticated } = useAuth();
   const { hydrated } = useCart();
   const [method, setMethod] = useState<MockPaymentMethod | null>(null);
   const [outcome, setOutcome] = useState<MockPaymentOutcome>("success");
@@ -60,6 +62,16 @@ function CheckoutContent() {
   const [orderSnapshotLoaded, setOrderSnapshotLoaded] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const submissionLock = useRef(false);
+
+  // Nếu chưa đăng nhập, tự động chuyển về trang đăng nhập
+  useEffect(() => {
+    if (!isAuthenticated) {
+      const returnUrl = orderId
+        ? `/checkout?orderId=${encodeURIComponent(orderId)}`
+        : "/cart";
+      router.push(`/login?redirect=${encodeURIComponent(returnUrl)}`);
+    }
+  }, [isAuthenticated, orderId, router]);
 
   useEffect(() => {
     let active = true;
@@ -94,7 +106,6 @@ function CheckoutContent() {
           setOrderError(`Đơn hàng #${order.orderCode} đã ở trạng thái ${order.status}, không thể thanh toán tiếp.`);
         } else {
           setCreatedOrder(order);
-          // Lưu lại vào session
           window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(order));
         }
         setOrderSnapshotLoaded(true);
@@ -165,14 +176,12 @@ function CheckoutContent() {
     setResult(null);
 
     try {
-      // Gọi API Mock Payment Backend thật để lưu vào PostgreSQL
       const paymentResult = await executeMockPayment(createdOrder.id, {
         method,
         outcome,
       });
 
       if (paymentResult.outcome === "SIMULATED_SUCCESS") {
-        // Lưu kết quả mô phỏng vào sessionStorage
         const mockPaymentRecord = {
           method,
           outcome: paymentResult.outcome,
@@ -185,13 +194,11 @@ function CheckoutContent() {
             JSON.stringify({ ...createdOrder, status: "PAID" }),
           );
         } catch {
-          // Bỏ qua lỗi sessionStorage nếu browser ở chế độ riêng tư giới hạn
+          // Bỏ qua nếu lỗi lưu session
         }
 
-        // Tự động chuyển hướng sang Order Confirmation Page
         router.push(`/checkout/confirmation?orderId=${encodeURIComponent(createdOrder.id)}`);
       } else {
-        // Mô phỏng thất bại: cập nhật trạng thái đơn thành PAYMENT_FAILED
         const updatedFailedOrder = { ...createdOrder, status: "PAYMENT_FAILED" };
         setCreatedOrder(updatedFailedOrder);
         try {
@@ -246,13 +253,12 @@ function CheckoutContent() {
 
   return (
     <main className="page-shell checkout-page">
-      <Link className="back-link" href="/cart">← Giỏ hàng</Link>
+      <Link className="back-link" href="/cart">Quay lại giỏ hàng</Link>
       <header className="checkout-heading">
         <p className="eyebrow">BrewLite · checkout thử nghiệm</p>
         <h1>Hoàn tất thanh toán</h1>
         <p>Đây là luồng thanh toán mô phỏng kết nối database thật. Đơn hàng sẽ chuyển sang trạng thái PAID khi hoàn tất.</p>
         
-        {/* Bộ đếm ngược thời gian thanh toán 2 phút */}
         {timeLeft !== null && (
           <div
             style={{
@@ -303,7 +309,6 @@ function CheckoutContent() {
                   }}
                   type="radio"
                 />
-                <span className="payment-method__icon" aria-hidden="true">◉</span>
                 <span><strong>Ví điện tử</strong><small>Chỉ mô phỏng</small></span>
               </label>
               <label className="payment-method">
@@ -318,7 +323,6 @@ function CheckoutContent() {
                   }}
                   type="radio"
                 />
-                <span className="payment-method__icon" aria-hidden="true">▤</span>
                 <span><strong>Thẻ ngân hàng</strong><small>Không nhập số thẻ</small></span>
               </label>
             </div>
@@ -404,7 +408,6 @@ function CheckoutContent() {
         </aside>
       </div>
 
-      {/* Toast thông báo lỗi khi mô phỏng thất bại */}
       {toast && (
         <Toast
           title={toast.title}
