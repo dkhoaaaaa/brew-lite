@@ -84,41 +84,84 @@ export class AuthService {
    * Đăng nhập với email và mật khẩu, trả về JWT Access Token.
    */
   async login(dto: LoginDto) {
-    const normalizedEmail = dto.email.toLowerCase().trim();
+  console.log("========== LOGIN START ==========");
 
-    const user = await this.prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
+  const normalizedEmail = dto.email.toLowerCase().trim();
 
-    if (!user) {
-      throw new UnauthorizedException("Email hoặc mật khẩu không chính xác");
-    }
+  console.log("[STEP 1] Email nhận được:", normalizedEmail);
 
-    if (!user.isActive) {
-      throw new UnauthorizedException("Tài khoản của bạn đã bị khóa");
-    }
+  // Tìm tài khoản trong database
+  const user = await this.prisma.user.findUnique({
+    where: { email: normalizedEmail },
+  });
 
-    // So sánh mật khẩu bằng bcrypt
-    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException("Email hoặc mật khẩu không chính xác");
-    }
+  console.log("[STEP 2] USER DEBUG:", {
+    userFound: !!user,
+    userId: user?.id.toString(),
+    isActive: user?.isActive,
+    hashPrefix: user?.passwordHash.slice(0, 7),
+  });
 
-    const accessToken = await this.generateToken(user.id.toString(), user.email, user.fullName);
+  if (!user) {
+    console.log("[ERROR] Không tìm thấy tài khoản");
 
-    return {
-      message: "Đăng nhập thành công",
-      user: {
-        id: user.id.toString(),
-        email: user.email,
-        fullName: user.fullName,
-        phone: user.phone,
-        loyaltyPoints: user.loyaltyPoints,
-      },
-      accessToken,
-      access_token: accessToken,
-    };
+    throw new UnauthorizedException(
+      "Email hoặc mật khẩu không chính xác"
+    );
   }
+
+  if (!user.isActive) {
+    console.log("[ERROR] Tài khoản bị khóa");
+
+    throw new UnauthorizedException(
+      "Tài khoản của bạn đã bị khóa"
+    );
+  }
+
+  // Kiểm tra mật khẩu
+  const isPasswordValid = await bcrypt.compare(
+    dto.password,
+    user.passwordHash
+  );
+
+  console.log("[STEP 3] PASSWORD DEBUG:", {
+    passwordValid: isPasswordValid,
+    passwordLength: dto.password?.length,
+  });
+
+  if (!isPasswordValid) {
+    console.log("[ERROR] Mật khẩu không chính xác");
+
+    throw new UnauthorizedException(
+      "Email hoặc mật khẩu không chính xác"
+    );
+  }
+
+  console.log("[STEP 4] Đăng nhập hợp lệ");
+
+  // Tạo JWT
+  const accessToken = await this.generateToken(
+    user.id.toString(),
+    user.email,
+    user.fullName
+  );
+
+  console.log("[STEP 5] Tạo JWT thành công");
+  console.log("========== LOGIN SUCCESS ==========");
+
+  return {
+    message: "Đăng nhập thành công",
+    user: {
+      id: user.id.toString(),
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone,
+      loyaltyPoints: user.loyaltyPoints,
+    },
+    accessToken,
+    access_token: accessToken,
+  };
+}
 
   /**
    * Lấy thông tin user hiện tại.

@@ -1,0 +1,419 @@
+/* ─── BREWLITE ORDERS CSS MODULE ───────────────────────────────────────── */
+
+.pageShell {
+  min-height: calc(100vh - 80px);
+  background-color: var(--lp-warm-white, #F7F5F1);
+  padding: 40px 20px 80px;
+  font-family: var(--font-sans, inherit);
+  color: var(--lp-espresso, #30251D);
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* ─── HEADER ──────────────────────────────────────────────────────────── */
+.header {
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--lp-coffee, #76513B);
+  margin-bottom: 6px;
+}
+
+.title {
+  font-family: var(--font-heading, "Merriweather", Georgia, serif);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--lp-espresso, #30251D);
+  margin: 0 0 8px;
+  line-height: 1.25;
+}
+
+.subtitle {
+  color: #6F6258;
+  font-size: 15px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ─── TABS / FILTER ───────────────────────────────────────────────────── */
+.tabsContainer {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 28px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+}
+
+.tabsContainer::-webkit-scrollbar {
+  display: none;
+}
+
+.tabBtn {
+  background: transparent;
+  border: 1px solid #DED6CB;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6F6258;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.tabBtn:hover {
+  background-color: #EDE7DE;
+  color: #30251D;
+}
+
+.tabBtnActive {
+  background-color: var(--lp-dark-coffee, #38291E);
+  color: #FFFFFF;
+  border-color: var(--lp-dark-coffee, #38291E);
+}
+
+.tabBtnActive:hover {
+  background-color: #241A13;
+  color: #FFFFFF;
+}
+
+/* ─── ORDERS LIST ─────────────────────────────────────────────────────── */
+.orderList {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.orderCard {
+  background: #FFFFFF;
+  border: 1px solid #DED6CB;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 6px rgba(48, 37, 29, 0.03);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.orderCard:hover {
+  box-shadow: 0 6px 16px rgba(48, 37, 29, 0.07);
+  border-color: #C7BCAD;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #F0EAE1;
+  margin-bottom: 16px;
+  gap: 16px;
+}
+
+.codeBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.orderCode {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--lp-espresso, #30251D);
+}
+
+.orderDate {
+  font-size: 13px;
+  color: #8C7E73;
+}
+
+/* ─── STATUS BADGES ───────────────────────────────────────────────────── */
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.statusPending {
+  background-color: #FFF6E5;
+  color: #975A16;
+  border: 1px solid #FBD38D;
+}
+
+.statusPaymentFailed {
+  background-color: #FDF2F2;
+  color: #9B1C1C;
+  border: 1px solid #F8B4B4;
+}
+
+.statusPaid {
+  background-color: #EBF8F2;
+  color: #22543D;
+  border: 1px solid #9AE6B4;
+}
+
+.statusPreparing {
+  background-color: #EBF5FB;
+  color: #1A5276;
+  border: 1px solid #AED6F1;
+}
+
+.statusReady {
+  background-color: #E8F8F5;
+  color: #117864;
+  border: 1px solid #A3E4D7;
+}
+
+.statusCompleted {
+  background-color: #E6FFFA;
+  color: #234E52;
+  border: 1px solid #81E6D9;
+}
+
+.statusCancelled {
+  background-color: #F7FAFC;
+  color: #718096;
+  border: 1px solid #E2E8F0;
+}
+
+/* ─── CARD BODY ───────────────────────────────────────────────────────── */
+.cardItems {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.cardItemRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14.5px;
+  color: #4A3E36;
+}
+
+.itemQuantityName {
+  font-weight: 500;
+}
+
+.cardItemMeta {
+  font-size: 12.5px;
+  color: #8C7E73;
+  margin-top: 2px;
+}
+
+/* ─── CARD FOOTER ─────────────────────────────────────────────────────── */
+.cardFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px dashed #EDE6DC;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.totalBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.totalLabel {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8C7E73;
+}
+
+.totalAmount {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--lp-espresso, #30251D);
+}
+
+.cardActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btnPrimary {
+  background-color: var(--lp-dark-coffee, #38291E);
+  color: #FFFFFF;
+  border: 1px solid var(--lp-dark-coffee, #38291E);
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btnPrimary:hover {
+  background-color: #241A13;
+  border-color: #241A13;
+}
+
+.btnSecondary {
+  background-color: transparent;
+  color: #5C4738;
+  border: 1px solid #DED6CB;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btnSecondary:hover {
+  background-color: #F7F5F1;
+  color: #30251D;
+  border-color: #C7BCAD;
+}
+
+/* ─── EMPTY / UNPAIRED STATES ─────────────────────────────────────────── */
+.statePanel {
+  background: #FFFFFF;
+  border: 1px solid #DED6CB;
+  border-radius: 12px;
+  padding: 50px 24px;
+  text-align: center;
+  max-width: 520px;
+  margin: 40px auto;
+}
+
+.stateTitle {
+  font-family: var(--font-heading, "Merriweather", Georgia, serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: #30251D;
+  margin: 0 0 10px;
+}
+
+.stateDesc {
+  font-size: 14.5px;
+  color: #6F6258;
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+/* ─── ORDER DETAILS PAGE ──────────────────────────────────────────────── */
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--lp-coffee, #76513B);
+  text-decoration: none;
+  margin-bottom: 24px;
+  transition: color 0.15s ease;
+}
+
+.backLink:hover {
+  color: #30251D;
+}
+
+.detailsGrid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 28px;
+  align-items: start;
+}
+
+@media (max-width: 820px) {
+  .detailsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detailsCard {
+  background: #FFFFFF;
+  border: 1px solid #DED6CB;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.detailsCardTitle {
+  font-family: var(--font-heading, "Merriweather", Georgia, serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: #30251D;
+  margin: 0 0 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #F0EAE1;
+}
+
+.timelineList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  padding-left: 20px;
+}
+
+.timelineList::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 6px;
+  width: 2px;
+  background-color: #E5DFD7;
+}
+
+.timelineItem {
+  position: relative;
+}
+
+.timelineItem::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #76513B;
+  border: 2px solid #FFFFFF;
+}
+
+.timelineStatus {
+  font-size: 14px;
+  font-weight: 600;
+  color: #30251D;
+}
+
+.timelineTime {
+  font-size: 12px;
+  color: #8C7E73;
+}
+
+.timelineNote {
+  font-size: 12px;
+  color: #6F6258;
+  margin-top: 2px;
+}
+

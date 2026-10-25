@@ -1,26 +1,89 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
+  Param,
   Post,
+  Query,
   UnauthorizedException,
 } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
+import { MockPaymentDto } from "./dto/mock-payment.dto.js";
 import { OrdersService } from "./orders.service.js";
 
 @Controller("orders")
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  private getUserId(authHeader?: string, userIdHeader?: string): bigint {
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.slice(7).trim();
+      try {
+        const payload = this.jwtService.verify(token);
+        if (payload?.sub) return BigInt(payload.sub);
+      } catch {
+        // Fall through to check userIdHeader if token fails or expired
+      }
+    }
+    if (userIdHeader && /^\d{1,18}$/.test(userIdHeader)) {
+      return BigInt(userIdHeader);
+    }
+    throw new UnauthorizedException("Vui lòng đăng nhập để thực hiện thao tác này.");
+  }
 
   @Post()
   create(
+    @Headers("authorization") authHeader: string | undefined,
     @Headers("x-user-id") userIdHeader: string | undefined,
     @Body() dto: CreateOrderDto,
   ) {
-    // TODO(Task 7): thay đoạn này bằng JwtAuthGuard và lấy id từ req.user.
-    if (!userIdHeader || !/^\d{1,18}$/.test(userIdHeader)) {
-      throw new UnauthorizedException("Missing or invalid user.");
-    }
-    return this.ordersService.create(BigInt(userIdHeader), dto);
+    const userId = this.getUserId(authHeader, userIdHeader);
+    return this.ordersService.create(userId, dto);
+  }
+
+  @Get("my")
+  findMyOrders(
+    @Headers("authorization") authHeader: string | undefined,
+    @Headers("x-user-id") userIdHeader: string | undefined,
+    @Query("status") status?: string,
+  ) {
+    const userId = this.getUserId(authHeader, userIdHeader);
+    return this.ordersService.findMyOrders(userId, status);
+  }
+
+  @Get(":id")
+  findById(
+    @Headers("authorization") authHeader: string | undefined,
+    @Headers("x-user-id") userIdHeader: string | undefined,
+    @Param("id") id: string,
+  ) {
+    const userId = this.getUserId(authHeader, userIdHeader);
+    return this.ordersService.findById(BigInt(id), userId);
+  }
+
+  @Post(":id/mock-payment")
+  processMockPayment(
+    @Headers("authorization") authHeader: string | undefined,
+    @Headers("x-user-id") userIdHeader: string | undefined,
+    @Param("id") id: string,
+    @Body() dto: MockPaymentDto,
+  ) {
+    const userId = this.getUserId(authHeader, userIdHeader);
+    return this.ordersService.processMockPayment(BigInt(id), userId, dto);
+  }
+
+  @Post(":id/cancel")
+  cancelOrder(
+    @Headers("authorization") authHeader: string | undefined,
+    @Headers("x-user-id") userIdHeader: string | undefined,
+    @Param("id") id: string,
+  ) {
+    const userId = this.getUserId(authHeader, userIdHeader);
+    return this.ordersService.cancelOrder(BigInt(id), userId);
   }
 }
