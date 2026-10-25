@@ -868,3 +868,205 @@
     padding: 60px 0;
   }
 }
+/* MENU PAGE */
+
+   .menu-page-wrapper {
+    background: var(--lp-warm-white, #F7F5F1);
+    min-height: calc(100vh - 64px);
+    padding: 48px 0 96px;
+  }
+  
+  .menu-container {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Header trang Menu */
+  .menu-header {
+    margin-bottom: 36px;
+  }
+  
+  .menu-title {
+    margin: 0 0 12px;
+    font-family: var(--font-heading, 'Merriweather', 'Noto Serif', Georgia, serif);
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 700;
+    color: var(--lp-espresso, #30251D);
+    line-height: 1.2;
+  }
+  
+  .menu-title span {
+    font-weight: 400;
+    color: var(--lp-coffee, #76513B);
+  }
+  
+  .menu-subtitle {
+    margin: 0;
+    font-family: var(--font-sans, 'Be Vietnam Pro', sans-serif);
+    font-size: 15px;
+    color: var(--lp-coffee, #76513B);
+    max-width: 620px;
+    line-height: 1.6;
+  }
+  
+  /* Thanh Toolbar: Search & Category Tabs */
+  .menu-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+  
+  @media (min-width: 768px) {
+    .menu-toolbar {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+  }
+  
+  /* Ô tìm kiếm */
+  .menu-search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 380px;
+  }
+  
+  .menu-search-icon {
+    position: absolute;
+    left: 16px;
+    color: var(--lp-coffee, #76513B);
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  
+  .menu-search-input {
+    width: 100%;
+    height: 44px;
+    padding: 0 40px 0 44px;
+    border-radius: 9999px;
+    border: 1.5px solid var(--lp-border, #D8CFC2);
+    background: #ffffff;
+    color: var(--lp-espresso, #30251D);
+    font-size: 13.5px;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  
+  .menu-search-input:focus {
+    border-color: var(--lp-dark-coffee, #38291E);
+    box-shadow: 0 0 0 3px rgba(56, 41, 30, 0.08);
+  }
+  
+  .menu-search-clear {
+    position: absolute;
+    right: 14px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--lp-border, #D8CFC2);
+    color: var(--lp-espresso, #30251D);
+    border: none;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  
+  .menu-search-clear:hover {
+    background: var(--lp-coffee, #76513B);
+    color: #ffffff;
+  }
+  
+  /* Category Tabs*/
+  .menu-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  
+  .menu-tab-btn {
+    padding: 9px 20px;
+    border-radius: 9999px;
+    border: 1px solid var(--lp-border, #D8CFC2);
+    background: #ffffff;
+    color: var(--lp-espresso, #30251D);
+    font-family: var(--font-sans, 'Be Vietnam Pro', sans-serif);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+  
+  .menu-tab-btn:hover {
+    border-color: var(--lp-coffee, #76513B);
+    color: var(--lp-coffee, #76513B);
+    background: #faf8f5;
+  }
+  
+  .menu-tab-btn.is-active {
+    background: var(--lp-dark-coffee, #38291E);
+    border-color: var(--lp-dark-coffee, #38291E);
+    color: #E7DECE;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(56, 41, 30, 0.15);
+  }
+  
+  /* Đếm kết quả & nút Reset */
+  .menu-results-count {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(216, 207, 194, 0.6);
+    font-size: 13px;
+    color: var(--lp-coffee, #76513B);
+  }
+  
+  .menu-results-count strong {
+    color: var(--lp-espresso, #30251D);
+  }
+  
+  .menu-reset-btn {
+    background: none;
+    border: none;
+    color: var(--lp-dark-coffee, #38291E);
+    font-size: 12.5px;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+  }
+  
+  /* State Panel (Lỗi / Trống) */
+  .menu-state-card {
+    background: #ffffff;
+    border: 1px solid var(--lp-border, #D8CFC2);
+    border-radius: 16px;
+    padding: 48px 24px;
+    text-align: center;
+    margin: 32px 0;
+  }
+  
+  .menu-state-card h2 {
+    font-family: var(--font-heading, 'Merriweather', 'Noto Serif', Georgia, serif);
+    font-size: 24px;
+    color: var(--lp-espresso, #30251D);
+    margin: 0 0 12px;
+  }
+  
+  .menu-state-card p {
+    color: var(--lp-coffee, #76513B);
+    font-size: 14px;
+    max-width: 480px;
+    margin: 0 auto 24px;
+    line-height: 1.6;
+  }
