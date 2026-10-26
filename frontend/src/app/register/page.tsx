@@ -1,13 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { register } from "../../lib/auth";
 import { formatErrorMessage } from "../../lib/api-client";
 
 export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[85vh] flex items-center justify-center bg-[#F7F5F1]">
+          <p className="text-[#76513B] text-sm">Đang tải...</p>
+        </div>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
+  );
+}
+
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -43,9 +60,9 @@ export default function RegisterPage() {
 
       setSuccess(true);
       setTimeout(() => {
-        router.push("/");
+        router.push(redirectUrl);
         router.refresh();
-      }, 1000);
+      }, 500);
     } catch (err: unknown) {
       setError(formatErrorMessage(err));
     } finally {
@@ -53,38 +70,48 @@ export default function RegisterPage() {
     }
   };
 
+  const loginHref =
+    redirectUrl && redirectUrl !== "/"
+      ? `/login?redirect=${encodeURIComponent(redirectUrl)}`
+      : "/login";
+
   return (
-    <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-amber-100">
-        <div>
-          <div className="flex justify-center text-4xl mb-2">☕</div>
-          <h2 className="text-center text-3xl font-extrabold text-stone-900">
+    <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-[#F7F5F1]">
+      <div className="max-w-md w-full space-y-6 bg-white p-8 sm:p-10 rounded-2xl shadow-sm border border-[#D8CFC2]">
+        <div className="text-center">
+          <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-2">
+            BrewLite Coffee
+          </p>
+          <h1
+            className="text-2xl sm:text-3xl font-bold text-[#30251D]"
+            style={{ fontFamily: "var(--font-heading, serif)" }}
+          >
             Tạo tài khoản mới
-          </h2>
-          <p className="mt-2 text-center text-sm text-stone-600">
-            Đăng ký để tích lũy điểm thưởng và đặt hàng nhanh chóng
+          </h1>
+          <p className="mt-2 text-sm text-[#76513B]/80">
+            Đăng ký để tích lũy điểm thưởng và nhận nhiều đặc quyền
           </p>
         </div>
 
         {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded text-sm text-red-700">
+          <div className="bg-[#FDF2F2] border-l-4 border-[#C84B31] p-3.5 rounded-lg text-sm text-[#9B2C1C]">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded text-sm text-emerald-700">
-            Đăng ký thành công! Đang đăng nhập tự động...
+          <div className="bg-[#F0FDF4] border-l-4 border-[#16A34A] p-3.5 rounded-lg text-sm text-[#166534]">
+            Đăng ký thành công! Đang chuyển hướng...
           </div>
         )}
 
-        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div>
             <label
               htmlFor="fullName"
-              className="block text-sm font-medium text-stone-700 mb-1"
+              className="block text-sm font-semibold text-[#30251D] mb-1.5"
             >
-              Họ và tên
+              Họ và tên <span className="text-[#C84B31]">*</span>
             </label>
             <input
               id="fullName"
@@ -93,7 +120,7 @@ export default function RegisterPage() {
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="w-full px-3 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
+              className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
               placeholder="Nguyễn Văn A"
             />
           </div>
@@ -101,9 +128,9 @@ export default function RegisterPage() {
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-stone-700 mb-1"
+              className="block text-sm font-semibold text-[#30251D] mb-1.5"
             >
-              Địa chỉ Email
+              Địa chỉ Email <span className="text-[#C84B31]">*</span>
             </label>
             <input
               id="email"
@@ -113,7 +140,7 @@ export default function RegisterPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
+              className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
               placeholder="vidu@email.com"
             />
           </div>
@@ -121,9 +148,9 @@ export default function RegisterPage() {
           <div>
             <label
               htmlFor="phone"
-              className="block text-sm font-medium text-stone-700 mb-1"
+              className="block text-sm font-semibold text-[#30251D] mb-1.5"
             >
-              Số điện thoại (tùy chọn)
+              Số điện thoại liên hệ (tùy chọn)
             </label>
             <input
               id="phone"
@@ -131,7 +158,7 @@ export default function RegisterPage() {
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-3 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
+              className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
               placeholder="0901234567"
             />
           </div>
@@ -139,9 +166,9 @@ export default function RegisterPage() {
           <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-stone-700 mb-1"
+              className="block text-sm font-semibold text-[#30251D] mb-1.5"
             >
-              Mật khẩu (tối thiểu 6 ký tự)
+              Mật khẩu (tối thiểu 6 ký tự) <span className="text-[#C84B31]">*</span>
             </label>
             <input
               id="password"
@@ -150,7 +177,7 @@ export default function RegisterPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
+              className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
               placeholder="••••••••"
             />
           </div>
@@ -158,9 +185,9 @@ export default function RegisterPage() {
           <div>
             <label
               htmlFor="confirmPassword"
-              className="block text-sm font-medium text-stone-700 mb-1"
+              className="block text-sm font-semibold text-[#30251D] mb-1.5"
             >
-              Xác nhận mật khẩu
+              Xác nhận mật khẩu <span className="text-[#C84B31]">*</span>
             </label>
             <input
               id="confirmPassword"
@@ -169,26 +196,26 @@ export default function RegisterPage() {
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-stone-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-900"
+              className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
               placeholder="••••••••"
             />
           </div>
 
-          <div>
+          <div className="pt-2">
             <button
               type="submit"
               disabled={loading || success}
-              className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-700 hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 transition cursor-pointer"
+              className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-bold uppercase tracking-wider text-[#FFF9F0] bg-[#38291E] hover:bg-[#251A13] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#76513B] disabled:opacity-50 transition cursor-pointer"
             >
               {loading ? "Đang xử lý..." : "Đăng ký tài khoản"}
             </button>
           </div>
 
-          <div className="text-center text-sm text-stone-600">
+          <div className="text-center text-sm text-[#76513B] pt-1">
             Đã có tài khoản?{" "}
             <Link
-              href="/login"
-              className="font-medium text-amber-700 hover:text-amber-800 hover:underline"
+              href={loginHref}
+              className="font-bold text-[#30251D] hover:underline"
             >
               Đăng nhập tại đây
             </Link>

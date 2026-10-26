@@ -12,6 +12,7 @@ export interface StoredUser {
   fullName: string;
   phone?: string | null;
   loyaltyPoints?: number;
+  createdAt?: string;
 }
 
 export interface RegisterInput {
@@ -24,6 +25,13 @@ export interface RegisterInput {
 export interface LoginInput {
   email: string;
   password: string;
+}
+
+export interface UpdateProfileInput {
+  fullName?: string;
+  phone?: string;
+  currentPassword?: string;
+  newPassword?: string;
 }
 
 export interface AuthResponse {
@@ -204,5 +212,29 @@ export function logout(): void {
 }
 
 export async function getProfile(): Promise<StoredUser> {
-  return apiClient<StoredUser>("/auth/me");
+  const user = await apiClient<StoredUser>("/auth/me");
+  if (user) {
+    setUser(user);
+    notifyAuthChange();
+  }
+  return user;
+}
+
+export async function updateProfile(
+  input: UpdateProfileInput,
+): Promise<{ message: string; user: StoredUser }> {
+  const data = await apiClient<{ message: string; user: StoredUser }>(
+    "/auth/profile",
+    {
+      method: "PUT",
+      body: JSON.stringify(input),
+    },
+  );
+
+  if (data?.user) {
+    setUser(data.user);
+    notifyAuthChange();
+  }
+
+  return data;
 }

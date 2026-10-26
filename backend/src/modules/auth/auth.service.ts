@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -7,7 +8,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import bcrypt from "bcrypt";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import { LoginDto, RegisterDto } from "./auth.dto.js";
+import { LoginDto, RegisterDto, UpdateProfileDto } from "./auth.dto.js";
 
 const SALT_ROUNDS = 10;
 
@@ -84,84 +85,56 @@ export class AuthService {
    * Đăng nhập với email và mật khẩu, trả về JWT Access Token.
    */
   async login(dto: LoginDto) {
-  console.log("========== LOGIN START ==========");
+    const normalizedEmail = dto.email.toLowerCase().trim();
 
-  const normalizedEmail = dto.email.toLowerCase().trim();
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
-  console.log("[STEP 1] Email nhận được:", normalizedEmail);
+    if (!user) {
+      throw new UnauthorizedException(
+        "Email hoặc mật khẩu không chính xác"
+      );
+    }
 
-  // Tìm tài khoản trong database
-  const user = await this.prisma.user.findUnique({
-    where: { email: normalizedEmail },
-  });
+    if (!user.isActive) {
+      throw new UnauthorizedException(
+        "Tài khoản của bạn đã bị khóa"
+      );
+    }
 
-  console.log("[STEP 2] USER DEBUG:", {
-    userFound: !!user,
-    userId: user?.id.toString(),
-    isActive: user?.isActive,
-    hashPrefix: user?.passwordHash.slice(0, 7),
-  });
-
-  if (!user) {
-    console.log("[ERROR] Không tìm thấy tài khoản");
-
-    throw new UnauthorizedException(
-      "Email hoặc mật khẩu không chính xác"
+    // Kiểm tra mật khẩu
+    const isPasswordValid = await bcrypt.compare(
+      dto.password,
+      user.passwordHash
     );
-  }
 
-  if (!user.isActive) {
-    console.log("[ERROR] Tài khoản bị khóa");
+    if (!isPasswordValid) {
+      throw new UnauthorizedException(
+        "Email hoặc mật khẩu không chính xác"
+      );
+    }
 
-    throw new UnauthorizedException(
-      "Tài khoản của bạn đã bị khóa"
+    // Tạo JWT
+    const accessToken = await this.generateToken(
+      user.id.toString(),
+      user.email,
+      user.fullName
     );
+
+    return {
+      message: "Đăng nhập thành công",
+      user: {
+        id: user.id.toString(),
+        email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
+        loyaltyPoints: user.loyaltyPoints,
+      },
+      accessToken,
+      access_token: accessToken,
+    };
   }
-
-  // Kiểm tra mật khẩu
-  const isPasswordValid = await bcrypt.compare(
-    dto.password,
-    user.passwordHash
-  );
-
-  console.log("[STEP 3] PASSWORD DEBUG:", {
-    passwordValid: isPasswordValid,
-    passwordLength: dto.password?.length,
-  });
-
-  if (!isPasswordValid) {
-    console.log("[ERROR] Mật khẩu không chính xác");
-
-    throw new UnauthorizedException(
-      "Email hoặc mật khẩu không chính xác"
-    );
-  }
-
-  console.log("[STEP 4] Đăng nhập hợp lệ");
-
-  // Tạo JWT
-  const accessToken = await this.generateToken(
-    user.id.toString(),
-    user.email,
-    user.fullName
-  );
-
-  console.log("[STEP 5] Tạo JWT thành công");
-  console.log("========== LOGIN SUCCESS ==========");
-
-  return {
-    message: "Đăng nhập thành công",
-    user: {
-      id: user.id.toString(),
-      email: user.email,
-      fullName: user.fullName,
-      phone: user.phone,
-      loyaltyPoints: user.loyaltyPoints,
-    },
-    accessToken,
-    access_token: accessToken,
-  };
-}
 
   /**
    * Lấy thông tin user hiện tại.
@@ -191,6 +164,88 @@ export class AuthService {
       phone: user.phone,
       loyaltyPoints: user.loyaltyPoints,
       createdAt: user.createdAt,
+    };
+  }
+
+  /**
+   * Cập nhật thông tin tài khoản người dùng hiện tại (họ tên, số điện thoại, mật khẩu).
+   */
+  async updateProfile(userIdStr: string, dto: UpdateProfileDto) {
+    const userId = BigInt(userIdStr);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.isActive) {
+      throw new NotFoundException("Không tìm thấy người dùng hoặc tài khoản bị khóa");
+    }
+
+    const dataToUpdate: {
+      fullName?: string;
+      phone?: string | null;
+      passwordHash?: string;
+    } = {};
+
+    if (dto.fullName !== undefined) {
+      const trimmedName = dto.fullName.trim();
+      if (trimmedName.length < 2) {
+        throw new BadRequestException("Họ và tên phải có ít nhất 2 ký tự");
+      }
+      dataToUpdate.fullName = trimmedName;
+    }
+
+    if (dto.phone !== undefined) {
+      const trimmedPhone = dto.phone.trim();
+      if (trimmedPhone) {
+        const existingPhone = await this.prisma.user.findFirst({
+          where: {
+            phone: trimmedPhone,
+            id: { not: userId },
+          },
+        });
+        if (existingPhone) {
+          throw new ConflictException("Số điện thoại này đã được sử dụng bởi tài khoản khác");
+        }
+        dataToUpdate.phone = trimmedPhone;
+      } else {
+        dataToUpdate.phone = null;
+      }
+    }
+
+    if (dto.newPassword) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException("Vui lòng cung cấp mật khẩu hiện tại để đổi mật khẩu");
+      }
+      const isMatch = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+      if (!isMatch) {
+        throw new UnauthorizedException("Mật khẩu hiện tại không chính xác");
+      }
+      dataToUpdate.passwordHash = await bcrypt.hash(dto.newPassword, SALT_ROUNDS);
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: dataToUpdate,
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        loyaltyPoints: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      message: "Cập nhật thông tin thành công",
+      user: {
+        id: updatedUser.id.toString(),
+        email: updatedUser.email,
+        fullName: updatedUser.fullName,
+        phone: updatedUser.phone,
+        loyaltyPoints: updatedUser.loyaltyPoints,
+        createdAt: updatedUser.createdAt,
+      },
     };
   }
 

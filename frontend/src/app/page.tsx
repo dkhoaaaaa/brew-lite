@@ -72,59 +72,13 @@ function HeroSection() {
   );
 }
 
-// ─── 2. CATEGORIES BAR (HORIZONTAL ICON STRIP) ────────────────────────────────
+// ─── 2. CATEGORIES BAR (HORIZONTAL STRIP) ─────────────────────────────────────
 
 const CATEGORY_ITEMS = [
-  {
-    id: "hot-coffee",
-    label: "Cà phê nóng",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
-        <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
-        <line x1="6" y1="1" x2="6" y2="4" strokeLinecap="round" />
-        <line x1="10" y1="1" x2="10" y2="4" strokeLinecap="round" />
-        <line x1="14" y1="1" x2="14" y2="4" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    id: "cold-coffee",
-    label: "Cà phê lạnh",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M5 8h14l-1.5 12a2 2 0 0 1-2 1.8H8.5a2 2 0 0 1-2-1.8L5 8z" />
-        <path d="M4 8h16" />
-        <path d="M15 2l-3 6" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    id: "tea-milktea",
-    label: "Trà & Trà sữa",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M6 9l1.2 11.2a2 2 0 0 0 2 1.8h5.6a2 2 0 0 0 2-1.8L18 9H6z" />
-        <path d="M5 9h14" />
-        <path d="M7 6h10" />
-        <circle cx="10" cy="15" r="1" fill="currentColor" />
-        <circle cx="14" cy="16" r="1" fill="currentColor" />
-        <circle cx="12" cy="18" r="1" fill="currentColor" />
-      </svg>
-    ),
-  },
-  {
-    id: "dessert",
-    label: "Bánh & Tráng miệng",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M3 21h18" />
-        <path d="M5 21V12l7-5 7 5v9" />
-        <path d="M12 7V3" strokeLinecap="round" />
-        <circle cx="12" cy="3" r="1" fill="currentColor" />
-      </svg>
-    ),
-  },
+  { id: "hot-coffee", label: "Cà phê nóng" },
+  { id: "cold-coffee", label: "Cà phê lạnh" },
+  { id: "tea-milktea", label: "Trà & Trà sữa" },
+  { id: "dessert", label: "Bánh & Tráng miệng" },
 ];
 
 function CategoriesBar() {
@@ -201,7 +155,7 @@ function LandingProductCard({
           </div>
         )}
 
-        {/* Favorite Heart Button */}
+        {/* Favorite Button */}
         <button
           type="button"
           className={`absolute top-3 right-3 w-8.5 h-8.5 rounded-full bg-white/90 backdrop-blur-xs flex items-center justify-center transition-all duration-200 hover:bg-white hover:scale-110 z-10 ${
@@ -214,18 +168,7 @@ function LandingProductCard({
           }}
           aria-label={isFavorite ? `Bỏ yêu thích ${product.name}` : `Yêu thích ${product.name}`}
         >
-          <svg
-            width="17"
-            height="17"
-            viewBox="0 0 24 24"
-            fill={isFavorite ? "currentColor" : "none"}
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-          </svg>
+          {isFavorite ? "Đã thích" : "Thích"}
         </button>
       </div>
 
@@ -311,9 +254,7 @@ function ProductShowcaseSection({
               disabled={startIndex === 0 || loading || products.length <= itemsPerPage}
               aria-label="Xem sản phẩm trước"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              Trước
             </button>
 
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-wider text-[#30251D] font-heading uppercase">
@@ -327,9 +268,7 @@ function ProductShowcaseSection({
               disabled={startIndex >= maxIndex || loading || products.length <= itemsPerPage}
               aria-label="Xem sản phẩm kế tiếp"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              Tiếp
             </button>
           </div>
         </header>
@@ -425,7 +364,6 @@ function PromotionalBanner() {
               className="inline-flex items-center gap-2 px-7 py-3 bg-[#38291E] hover:bg-[#1F150E] text-[#E7DECE] hover:text-white text-xs sm:text-sm font-extrabold tracking-wider uppercase rounded-full shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5"
             >
               Khám phá ngay
-              <span aria-hidden="true">→</span>
             </Link>
           </div>
 
@@ -560,7 +498,6 @@ export default function HomePage() {
   const coffeeProducts = products.filter((p) => isCoffeeItem(p.name));
   const drinkProducts = products.filter((p) => !isCoffeeItem(p.name));
 
-  // Fallback an toàn nếu phân loại theo từ khóa không có món
   const finalCoffeeList = coffeeProducts.length > 0 ? coffeeProducts : products.slice(0, 6);
   const finalDrinkList = drinkProducts.length > 0 ? drinkProducts : products.slice(6, 12);
 
