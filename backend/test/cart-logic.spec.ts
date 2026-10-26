@@ -9,11 +9,19 @@ import {
   getSafeCartTotals,
   increaseCartItem,
   isCartLine,
+  mergeCartItems,
   parseStoredCart,
   removeCartItem,
   toCreateOrderPayload,
   type CartLine,
 } from "../../frontend/src/features/cart/cart-logic.js";
+import {
+  GUEST_CART_STORAGE_KEY,
+  getCartStorageKey,
+  loadCartForIdentity,
+  saveCartForIdentity,
+  type CartStorage,
+} from "../../frontend/src/features/cart/cart-storage.js";
 import type { ConfiguredProduct } from "../../frontend/src/types/product.js";
 
 const baseItem: ConfiguredProduct = {
@@ -28,6 +36,24 @@ const baseItem: ConfiguredProduct = {
 
 function cartLine(overrides: Partial<CartLine> = {}): CartLine {
   return { ...baseItem, cartItemId: "line-1", ...overrides };
+}
+
+class MemoryCartStorage implements CartStorage {
+  private readonly values = new Map<string, string>();
+  failWrites = false;
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    if (this.failWrites) throw new Error("Storage write failed");
+    this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
 }
 
 describe("Task 5 cart logic", () => {
@@ -57,6 +83,9 @@ describe("Task 5 cart logic", () => {
       expect(isCartLine(cartLine({ unitPrice }))).toBe(false);
     },
   );
+  it("rejects negative zero prices", () => {
+    expect(isCartLine(cartLine({ unitPrice: "-0.00" }))).toBe(false);
+  });
 
   it("rejects invalid nested size and topping values", () => {
     expect(isCartLine(cartLine({ size: null }))).toBe(false);
@@ -102,6 +131,92 @@ describe("Task 5 cart logic", () => {
       [first],
     );
     expect(result).toHaveLength(4);
+  });
+
+  it("merges duplicate configurations but keeps different sizes and toppings separate", () => {
+    const accountLine = cartLine({ quantity: 2 });
+    const sameConfiguration = { ...baseItem, quantity: 3 };
+    const differentSize = {
+      ...baseItem,
+      size: { id: "size-2", sizeCode: "L", extraPrice: "7.00" },
+    };
+    const differentToppings = {
+      ...baseItem,
+      toppings: [{ id: "topping-2", name: "Other", price: "1.00" }],
+    };
+    let id = 0;
+
+    const result = mergeCartItems(
+      [accountLine],
+      [
+        { ...sameConfiguration, cartItemId: "guest-same" },
+        { ...differentSize, cartItemId: "guest-size" },
+        { ...differentToppings, cartItemId: "guest-topping" },
+      ],
+      () => `merged-${++id}`,
+    );
+    expect(result).toEqual([
+      { ...accountLine, quantity: 5 },
+      { ...differentSize, cartItemId: "merged-1" },
+      { ...differentToppings, cartItemId: "merged-2" },
+    ]);
+  });
+
+  it("persists a guest cart and restores it after a fresh load", () => {
+    const storage = new MemoryCartStorage();
+    const guestCart = addCartItem([], baseItem, () => "guest-line");
+    saveCartForIdentity(storage, null, guestCart);
+
+    expect(loadCartForIdentity(storage, null, () => "unused")).toEqual(guestCart);
+    expect(loadCartForIdentity(storage, null, () => "unused")).toEqual(guestCart);
+  });
+
+  it("merges the guest cart into an account only after writing the merged cart", () => {
+    const storage = new MemoryCartStorage();
+    const guestLine = cartLine({ quantity: 2 });
+    const accountLine = cartLine({ quantity: 3 });
+    saveCartForIdentity(storage, null, [guestLine]);
+    saveCartForIdentity(storage, "account-a", [accountLine]);
+
+    expect(loadCartForIdentity(storage, "account-a", () => "unused")).toEqual([
+      { ...accountLine, quantity: 5 },
+    ]);
+    expect(storage.getItem(GUEST_CART_STORAGE_KEY)).toBeNull();
+  });
+
+  it("isolates account carts from one another and keeps guest items through logout", () => {
+    const storage = new MemoryCartStorage();
+    const accountALine = cartLine({ productId: "account-a-product" });
+    const accountBLine = cartLine({ productId: "account-b-product" });
+    const guestLine = cartLine({ productId: "guest-product" });
+    saveCartForIdentity(storage, "account-a", [accountALine]);
+    saveCartForIdentity(storage, "account-b", [accountBLine]);
+    saveCartForIdentity(storage, null, [guestLine]);
+
+    expect(getCartStorageKey("account-a")).not.toBe(getCartStorageKey("account-b"));
+    expect(loadCartForIdentity(storage, "account-b", () => "merged-guest")).toEqual([
+      accountBLine,
+      { ...guestLine, cartItemId: "merged-guest" },
+    ]);
+    expect(loadCartForIdentity(storage, null, () => "unused")).toEqual([]);
+    expect(loadCartForIdentity(storage, "account-b", () => "unused")).toEqual([
+      accountBLine,
+      { ...guestLine, cartItemId: "merged-guest" },
+    ]);
+    expect(loadCartForIdentity(storage, "account-a", () => "unused")).toEqual([
+      accountALine,
+    ]);
+  });
+
+  it("does not remove guest data when writing the merged account cart fails", () => {
+    const storage = new MemoryCartStorage();
+    saveCartForIdentity(storage, null, [cartLine()]);
+    storage.failWrites = true;
+
+    expect(() =>
+      loadCartForIdentity(storage, "account-a", () => "account-line"),
+    ).toThrow("Storage write failed");
+    expect(storage.getItem(GUEST_CART_STORAGE_KEY)).not.toBeNull();
   });
 
   it("maps the selected API size ID to productSizeId without inferring from its label", () => {
