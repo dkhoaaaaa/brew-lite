@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,18 +14,26 @@ import {
   decreaseCartItem,
   getSafeCartTotals,
   increaseCartItem,
-  parseStoredCart,
   removeCartItem,
   type CartLine,
 } from "./cart-logic";
+import {
+  loadCartForIdentity,
+  saveCartForIdentity,
+} from "./cart-storage";
+import { getAccessToken, getUser, useAuth } from "../../lib/auth";
 
 export type { CartLine } from "./cart-logic";
 
-const STORAGE_KEY = "brewlite-cart-v1";
+type CartSession = {
+  userId: string | null | undefined;
+  items: CartLine[];
+};
 
 type CartContextValue = {
   items: CartLine[];
   hydrated: boolean;
+  storageError: string | null;
   itemCount: number;
   totalMinorUnits: number;
   addItem: (item: ConfiguredProduct) => void;
@@ -36,59 +45,140 @@ type CartContextValue = {
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-function readStoredCart(): CartLine[] {
-  try {
-    return parseStoredCart(window.localStorage.getItem(STORAGE_KEY));
-  } catch {
-    return [];
-  }
+function getCurrentUserId(): string | null | undefined {
+  const token = getAccessToken();
+  const user = getUser();
+  if (!token) return null;
+  return typeof user?.id === "string" && user.id.trim()
+    ? user.id
+    : undefined;
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartLine[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const { user, token } = useAuth();
+  const userId = token
+    ? typeof user?.id === "string" && user.id.trim()
+      ? user.id
+      : undefined
+    : null;
+  const [session, setSession] = useState<CartSession>({
+    userId: undefined,
+    items: [],
+  });
+  const sessionRef = useRef(session);
+  const failedHydrationForRef = useRef<string | null | undefined>(undefined);
+  const [storageIssue, setStorageIssue] = useState<{
+    userId: string | null;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
+    if (userId === undefined) return;
+    sessionRef.current = { userId: undefined, items: [] };
+    failedHydrationForRef.current = undefined;
     let active = true;
     queueMicrotask(() => {
-      if (!active) return;
-      setItems(readStoredCart());
-      setHydrated(true);
+      if (!active || getCurrentUserId() !== userId) return;
+      setStorageIssue(null);
+      try {
+        const items = loadCartForIdentity(
+          window.localStorage,
+          userId,
+          () => crypto.randomUUID(),
+        );
+        const nextSession = { userId, items };
+        sessionRef.current = nextSession;
+        setSession(nextSession);
+        failedHydrationForRef.current = undefined;
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Không thể khôi phục giỏ hàng từ bộ nhớ trình duyệt.";
+        const nextSession = { userId, items: [] };
+        sessionRef.current = nextSession;
+        setSession(nextSession);
+        failedHydrationForRef.current = userId;
+        setStorageIssue({ userId, message });
+      }
     });
     return () => {
       active = false;
     };
-  }, []);
+  }, [userId]);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {
-      // Keep the in-memory cart usable when browser storage is unavailable.
+  const hydrated = userId !== undefined && session.userId === userId;
+  const items = hydrated ? session.items : [];
+
+  function updateItems(update: (current: CartLine[]) => CartLine[]) {
+    if (userId === undefined || getCurrentUserId() !== userId) return;
+
+    if (
+      sessionRef.current.userId !== userId ||
+      failedHydrationForRef.current === userId
+    ) {
+      try {
+        const currentItems = loadCartForIdentity(
+          window.localStorage,
+          userId,
+          () => crypto.randomUUID(),
+        );
+        const currentSession = { userId, items: currentItems };
+        sessionRef.current = currentSession;
+        setSession(currentSession);
+        failedHydrationForRef.current = undefined;
+        setStorageIssue(null);
+      } catch (error) {
+        failedHydrationForRef.current = userId;
+        setStorageIssue({
+          userId,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Không thể khôi phục giỏ hàng từ bộ nhớ trình duyệt.",
+        });
+        return;
+      }
     }
-  }, [hydrated, items]);
+
+    const nextItems = update(sessionRef.current.items);
+    const nextSession = { userId, items: nextItems };
+    sessionRef.current = nextSession;
+    setSession(nextSession);
+    try {
+      saveCartForIdentity(window.localStorage, userId, nextItems);
+      setStorageIssue(null);
+    } catch (error) {
+      setStorageIssue({
+        userId,
+        message:
+          error instanceof Error
+            ? `Giỏ hàng hiện chỉ còn trong phiên này: ${error.message}`
+            : "Giỏ hàng hiện chỉ còn trong phiên này vì không thể ghi bộ nhớ trình duyệt.",
+      });
+    }
+  }
 
   function addItem(item: ConfiguredProduct) {
-    setItems((current) =>
+    updateItems((current) =>
       addCartItem(current, item, () => crypto.randomUUID()),
     );
   }
 
   function increaseItem(cartItemId: string) {
-    setItems((current) => increaseCartItem(current, cartItemId));
+    updateItems((current) => increaseCartItem(current, cartItemId));
   }
 
   function decreaseItem(cartItemId: string) {
-    setItems((current) => decreaseCartItem(current, cartItemId));
+    updateItems((current) => decreaseCartItem(current, cartItemId));
   }
 
   function removeItem(cartItemId: string) {
-    setItems((current) => removeCartItem(current, cartItemId));
+    updateItems((current) => removeCartItem(current, cartItemId));
   }
 
   function clearCart() {
-    setItems([]);
+    updateItems(() => []);
   }
 
   const totals = getSafeCartTotals(items) ?? { itemCount: 0, totalMinorUnits: 0 };
@@ -99,6 +189,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       value={{
         items,
         hydrated,
+        storageError:
+          storageIssue && storageIssue.userId === userId
+            ? storageIssue.message
+            : null,
         itemCount,
         totalMinorUnits,
         addItem,

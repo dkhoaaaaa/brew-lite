@@ -16,6 +16,7 @@ export default function CartPage() {
   const {
     items,
     hydrated,
+    storageError,
     totalMinorUnits,
     increaseItem,
     decreaseItem,
@@ -74,6 +75,11 @@ export default function CartPage() {
     return (
       <main className="page-shell cart-page">
         <p className="eyebrow">BrewLite · giỏ hàng</p>
+        <p className="state-message" role="status">
+          Giỏ hàng hiện được lưu trên thiết bị này. Backend chưa có API giỏ hàng nên
+          chưa đồng bộ giữa thiết bị hoặc lên cơ sở dữ liệu.
+        </p>
+        {storageError && <p className="payment-result payment-result--failure" role="alert">{storageError}</p>}
         <section className="state-panel">
           <h1>Giỏ hàng đang trống.</h1>
           <p>Chọn một món từ menu để bắt đầu.</p>
@@ -92,6 +98,11 @@ export default function CartPage() {
         </div>
         <Link className="back-link" href="/menu">← Tiếp tục mua</Link>
       </header>
+      <p className="state-message" role="status">
+        Giỏ hàng hiện được lưu trên thiết bị này. Backend chưa có API giỏ hàng nên
+        chưa đồng bộ giữa thiết bị hoặc lên cơ sở dữ liệu.
+      </p>
+      {storageError && <p className="payment-result payment-result--failure" role="alert">{storageError}</p>}
       <div className="cart-layout">
         <section aria-label="Các món trong giỏ" className="cart-lines">
           {items.map((item) => (
