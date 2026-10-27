@@ -4,10 +4,12 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
+  Put,
   UseGuards,
 } from "@nestjs/common";
-import { LoginDto, RegisterDto } from "./auth.dto.js";
+import { LoginDto, RegisterDto, UpdateProfileDto } from "./auth.dto.js";
 import { CurrentUser, JwtAuthGuard } from "./auth.guard.js";
 import type { AuthenticatedUser } from "./auth.guard.js";
 import { AuthService } from "./auth.service.js";
@@ -43,5 +45,26 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async getProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.getProfile(user.id);
+  }
+
+  /**
+   * Cập nhật thông tin tài khoản hiện tại (họ tên, số điện thoại, mật khẩu).
+   */
+  @Put("profile")
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() updateDto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.id, updateDto);
+  }
+
+  @Patch("profile")
+  @UseGuards(JwtAuthGuard)
+  async patchProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() updateDto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.id, updateDto);
   }
 }
