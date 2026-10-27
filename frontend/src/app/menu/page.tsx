@@ -1,10 +1,6 @@
 "use client";
 
-<<<<<<< HEAD
-import { useEffect, useMemo, useState } from "react";
-=======
 import React, { useEffect, useState, useMemo } from "react";
->>>>>>> a3c30e6c7f7138b277e00f27470bb907a15e548f
 import { ProductCard } from "../../features/products/components/ProductCard";
 import { ProductSkeleton } from "../../features/products/components/ProductSkeleton";
 import "../../styles/landing.css";

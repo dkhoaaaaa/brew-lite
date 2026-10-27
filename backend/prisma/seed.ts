@@ -14,7 +14,19 @@ type ProductSeed = {
   description: string;
   price: string;
   stock: number;
+  imageUrl?: string;
 };
+
+// Hàm chuyển đổi tên tiếng Việt có dấu thành slug không dấu để khớp tên file ảnh
+function slugify(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .replace(/([^0-9a-z-\s])/g, "")
+    .replace(/(\s+)/g, "-");
+}
 
 const productData: ProductSeed[] = [
   // Cà phê (50)
@@ -172,7 +184,6 @@ const productData: ProductSeed[] = [
   { name: "Cookie matcha", category: "Bánh", description: "Bánh quy thơm vị matcha", price: "29000", stock: 50 },
   { name: "Macaron vanilla", category: "Bánh", description: "Bánh macaron nhân kem vanilla", price: "35000", stock: 50 },
   { name: "Macaron raspberry", category: "Bánh", description: "Bánh macaron nhân mâm xôi", price: "35000", stock: 50 },
-
 ];
 
 const toppingData = [
@@ -206,10 +217,6 @@ const promotionData = [
   { code: "FRIEND25K", name: "Giảm 25.000đ", description: "Giảm 25.000đ cho đơn từ 150.000đ.", discountType: "FIXED", discountValue: "25000", minOrderAmount: "150000", maxDiscountAmount: "25000", usageLimit: 200 },
   { code: "BIGORDER30", name: "Giảm 30.000đ", description: "Giảm 30.000đ cho đơn từ 200.000đ.", discountType: "FIXED", discountValue: "30000", minOrderAmount: "200000", maxDiscountAmount: "30000", usageLimit: 150 },
 ] as const;
-
-// ======================================================
-// TÀI KHOẢN MẪU - BREWLITE
-// ======================================================
 
 const accountData = [
   {
@@ -257,14 +264,11 @@ async function main() {
     categories.set(name, category.id);
   }
 
-  // Ẩn các danh mục cũ, không xóa dữ liệu lịch sử.
   await prisma.category.updateMany({
     where: { name: { notIn: [...categories.keys()] } },
     data: { isActive: false },
   });
 
-  // Product chưa có @@unique([name, categoryId]), nên dùng findFirst + update/create.
-  // Cách này idempotent khi seed chạy tuần tự, KHÔNG chống trùng nếu 2 tiến trình seed chạy đồng thời.
   const products = new Map<string, bigint>();
   for (const item of productData) {
     const categoryId = categories.get(item.category)!;
@@ -272,12 +276,17 @@ async function main() {
       where: { name: item.name, categoryId },
       orderBy: { id: "asc" },
     });
+
+    // Tự động sinh đường dẫn ảnh trỏ tới thư mục public của backend
+    const imagePath = `/image/${slugify(item.name)}.jpg`;
+
     const data = {
       categoryId,
       name: item.name,
       description: item.description,
       price: item.price,
       stock: item.stock,
+      imageUrl: imagePath,
       isActive: true,
     };
     const product = existing
@@ -286,7 +295,6 @@ async function main() {
     products.set(item.name, product.id);
   }
 
-  // Ẩn sản phẩm không còn thuộc thực đơn mẫu; giữ bản ghi cho đơn hàng cũ.
   const activeProductIds = [...products.values()];
   await prisma.product.updateMany({
     where: { id: { notIn: activeProductIds } },
@@ -300,7 +308,6 @@ async function main() {
   ];
   for (const item of productData) {
     const productId = products.get(item.name)!;
-    // Bánh bán theo phần: dùng duy nhất size S giá cộng 0 để tương thích giỏ hàng.
     if (item.category === "Bánh") {
       await prisma.productSize.updateMany({ where: { productId }, data: { isActive: false } });
       await prisma.productSize.upsert({
@@ -332,7 +339,6 @@ async function main() {
     toppings.set(item.name, topping.id);
   }
 
-  // Gắn topping cho các nhóm phù hợp; upsert dựa trên khóa chính kép.
   for (const item of productData) {
     const selectedToppings = item.category === "Trà"
       ? ["Trân châu đen", "Trân châu trắng", "Trân châu hoàng kim", "Trân châu đường đen", "Thạch trái cây", "Thạch nha đam", "Thạch dừa", "Thạch vải", "Pudding trứng", "Pudding socola", "Pudding matcha", "Kem cheese", "Kem sữa mặn", "Hạt sen"]
@@ -340,7 +346,6 @@ async function main() {
         ? ["Kem cheese", "Kem sữa mặn", "Kem vani", "Thạch cà phê", "Trân châu đường đen"]
         : [];
     const productId = products.get(item.name)!;
-    // Đồng bộ liên kết topping của thực đơn mẫu khi chạy lại.
     await prisma.productTopping.deleteMany({
       where: { productId, toppingId: { notIn: selectedToppings.map((name) => toppings.get(name)!) } },
     });
@@ -354,7 +359,6 @@ async function main() {
     }
   }
 
-  // Reward không có khóa unique(name), nên tìm rồi cập nhật để tránh nhân bản khi chạy lại.
   const rewardName = "Giảm 10.000đ";
   const rewardData = {
     description: "Đổi điểm tích lũy để nhận ưu đãi.",
@@ -399,18 +403,12 @@ async function main() {
     });
   }
 
-  // ======================================================
-// SEED TÀI KHOẢN MẪU
-// ======================================================
-
   console.log("Bắt đầu seed tài khoản mẫu...");
 
   if (process.env.NODE_ENV !== "production") {
     for (const account of accountData) {
       const existingUser = await prisma.user.findUnique({
-        where: {
-          email: account.email,
-        },
+        where: { email: account.email },
       });
 
       if (existingUser) {

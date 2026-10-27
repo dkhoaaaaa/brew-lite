@@ -13,6 +13,9 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
+# Thêm dòng này để ép Docker đưa thư mục public vào đúng trong thư mục backend của container
+COPY backend/public ./backend/public
+
 EXPOSE 3000
 
 CMD ["pnpm", "--dir", "backend", "start:dev"]
