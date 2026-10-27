@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../lib/auth";
 import { formatPrice } from "../../lib/money";
 import { cancelOrder, getMyOrders, type CreatedOrderResponse } from "../../lib/orders-api";
@@ -23,18 +23,6 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const tabsRef = useRef<HTMLDivElement>(null);
-
-  const scrollTabs = (direction: "left" | "right") => {
-    if (tabsRef.current) {
-      const scrollAmount = 220;
-      tabsRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
-  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -175,7 +163,7 @@ export default function OrdersPage() {
     <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-10 px-4 sm:px-6 lg:px-8 font-sans text-[#30251D]">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <header className="mb-8">
+        <header className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-wider text-[#76513B] mb-1">
             Lịch sử mua hàng
           </p>
@@ -187,88 +175,45 @@ export default function OrdersPage() {
           </p>
         </header>
 
-        {/* Khung bộ lọc: Dropdown chọn nhanh + Thanh tab có 2 nút dịch chuyển qua lại */}
-        <div className="mb-8 flex flex-col gap-3">
-          {/* 1. Dropdown chọn nhanh trạng thái */}
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#76513B]">
-              Lọc theo trạng thái:
-            </span>
-            <div className="relative inline-block w-48 sm:w-56">
-              <select
-                aria-label="Chọn trạng thái đơn hàng"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full appearance-none bg-white border border-[#DED6CB] hover:border-[#76513B] rounded-xl px-3.5 py-2 pr-9 text-xs sm:text-sm font-semibold text-[#30251D] cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-[#76513B] transition-colors"
-              >
-                {TABS.map((tab) => (
-                  <option key={tab.id} value={tab.id} className="text-[#30251D] py-1">
-                    {tab.label}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#30251D]">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </div>
+        {/* Khung lọc theo trạng thái: Sử dụng List Dropdown */}
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white border border-[#DED6CB] rounded-2xl shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-[#F5EFE6] text-[#76513B] flex items-center justify-center shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+            </div>
+            <div>
+              <label htmlFor="order-status-filter" className="text-xs sm:text-sm font-bold text-[#30251D] block">
+                Lọc theo trạng thái
+              </label>
+              <span className="text-xs text-[#8C7E73]">
+                {statusFilter === "ALL"
+                  ? "Hiển thị toàn bộ đơn hàng"
+                  : `Đang lọc: ${TABS.find((t) => t.id === statusFilter)?.label}`}
+              </span>
             </div>
           </div>
 
-          {/* 2. Dải tab cuộn với 2 nút bấm chuyển qua lại (Prev / Next) */}
-          <div className="relative flex items-center gap-2">
-            {/* Nút dịch chuyển sang trái */}
-            <button
-              type="button"
-              onClick={() => scrollTabs("left")}
-              className="inline-flex items-center justify-center w-8.5 h-8.5 rounded-full bg-white border border-[#DED6CB] text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] transition-all shrink-0 shadow-2xs cursor-pointer"
-              aria-label="Cuộn các tab sang trái"
-              title="Cuộn sang trái"
+          <div className="relative min-w-[200px] sm:min-w-[240px]">
+            <select
+              id="order-status-filter"
+              aria-label="Chọn trạng thái đơn hàng"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full appearance-none bg-[#F7F5F1] hover:bg-[#F5EFE6] border border-[#DED6CB] hover:border-[#76513B] rounded-xl px-4 py-2.5 pr-10 text-xs sm:text-sm font-semibold text-[#30251D] cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#76513B]/20 focus:border-[#76513B] transition-all"
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 18l-6-6 6-6" />
+              {TABS.map((tab) => (
+                <option key={tab.id} value={tab.id} className="text-[#30251D] py-1 font-medium">
+                  {tab.label}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-[#76513B]">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
               </svg>
-            </button>
-
-            {/* Dải tab cuộn */}
-            <nav
-              ref={tabsRef}
-              aria-label="Bộ lọc trạng thái đơn hàng"
-              className="flex-1 flex gap-2 overflow-x-auto py-1 scroll-smooth scrollbar-none"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-              {TABS.map((tab) => {
-                const isActive = statusFilter === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    className={`px-4 py-2 rounded-full text-xs sm:text-sm whitespace-nowrap transition-all border cursor-pointer ${
-                      isActive
-                        ? "bg-[#38291E] !text-white border-[#38291E] font-bold shadow-xs"
-                        : "bg-white !text-[#30251D] border-[#DED6CB] hover:border-[#76513B] hover:bg-[#F5EFE6] font-semibold"
-                    }`}
-                    style={{ color: isActive ? "#ffffff" : "#30251D" }}
-                    onClick={() => setStatusFilter(tab.id)}
-                    type="button"
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </nav>
-
-            {/* Nút dịch chuyển sang phải */}
-            <button
-              type="button"
-              onClick={() => scrollTabs("right")}
-              className="inline-flex items-center justify-center w-8.5 h-8.5 rounded-full bg-white border border-[#DED6CB] text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] transition-all shrink-0 shadow-2xs cursor-pointer"
-              aria-label="Cuộn các tab sang phải"
-              title="Cuộn sang phải"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            </button>
+            </div>
           </div>
         </div>
 

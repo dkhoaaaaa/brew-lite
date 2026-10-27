@@ -2,15 +2,31 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "../../../lib/auth";
 import { formatPrice } from "../../../lib/money";
 import { cancelOrder, getOrderById, type CreatedOrderResponse } from "../../../lib/orders-api";
 
 export default function OrderDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 lg:px-8 font-sans text-[#30251D]">
+          <div className="max-w-4xl mx-auto bg-white border border-[#DED6CB] rounded-2xl p-12 text-center shadow-xs">
+            <p className="text-sm text-[#6F6258] animate-pulse">Đang tải chi tiết đơn hàng...</p>
+          </div>
+        </main>
+      }
+    >
+      <OrderDetailsContent />
+    </Suspense>
+  );
+}
+
+function OrderDetailsContent() {
   const params = useParams();
   const router = useRouter();
-  const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
+  const id = typeof params?.id === "string" ? params.id : Array.isArray(params?.id) ? params.id[0] : "";
   const { isAuthenticated } = useAuth();
   const [order, setOrder] = useState<CreatedOrderResponse | null>(null);
   const [loading, setLoading] = useState(true);

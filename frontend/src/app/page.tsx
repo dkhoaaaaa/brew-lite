@@ -74,11 +74,57 @@ function HeroSection() {
 
 // ─── 2. CATEGORIES BAR (HORIZONTAL STRIP) ─────────────────────────────────────
 
-const CATEGORY_ITEMS = [
-  { id: "hot-coffee", label: "Cà phê nóng" },
-  { id: "cold-coffee", label: "Cà phê lạnh" },
-  { id: "tea-milktea", label: "Trà & Trà sữa" },
-  { id: "dessert", label: "Bánh & Tráng miệng" },
+const CATEGORY_ITEMS: { id: string; label: string; icon: React.ReactNode }[] = [
+  {
+    id: "hot-coffee",
+    label: "Cà phê nóng",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
+        <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
+        <line x1="6" y1="1" x2="6" y2="4" strokeLinecap="round" />
+        <line x1="10" y1="1" x2="10" y2="4" strokeLinecap="round" />
+        <line x1="14" y1="1" x2="14" y2="4" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    id: "cold-coffee",
+    label: "Cà phê lạnh",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path d="M5 8h14l-1.5 12a2 2 0 0 1-2 1.8H8.5a2 2 0 0 1-2-1.8L5 8z" />
+        <path d="M4 8h16" />
+        <path d="M15 2l-3 6" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    id: "tea-milktea",
+    label: "Trà & Trà sữa",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path d="M6 9l1.2 11.2a2 2 0 0 0 2 1.8h5.6a2 2 0 0 0 2-1.8L18 9H6z" />
+        <path d="M5 9h14" />
+        <path d="M7 6h10" />
+        <circle cx="10" cy="15" r="1" fill="currentColor" />
+        <circle cx="14" cy="16" r="1" fill="currentColor" />
+        <circle cx="12" cy="18" r="1" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: "dessert",
+    label: "Bánh & Tráng miệng",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path d="M3 21h18" />
+        <path d="M5 21V12l7-5 7 5v9" />
+        <path d="M12 7V3" strokeLinecap="round" />
+        <circle cx="12" cy="3" r="1" fill="currentColor" />
+      </svg>
+    ),
+  },
 ];
 
 function CategoriesBar() {
@@ -110,15 +156,9 @@ function CategoriesBar() {
 
 interface LandingProductCardProps {
   product: ProductSummary;
-  isFavorite: boolean;
-  onToggleFavorite: (id: string) => void;
 }
 
-function LandingProductCard({
-  product,
-  isFavorite,
-  onToggleFavorite,
-}: LandingProductCardProps) {
+function LandingProductCard({ product }: LandingProductCardProps) {
   return (
     <article className="group bg-white border border-[#D8CFC2] hover:border-[#76513B] rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-1 hover:shadow-lg relative">
       {/* Media Image */}
@@ -154,22 +194,6 @@ function LandingProductCard({
             <span className="font-heading text-xs font-bold tracking-wider opacity-70">BrewLite</span>
           </div>
         )}
-
-        {/* Favorite Button */}
-        <button
-          type="button"
-          className={`absolute top-3 right-3 w-8.5 h-8.5 rounded-full bg-white/90 backdrop-blur-xs flex items-center justify-center transition-all duration-200 hover:bg-white hover:scale-110 z-10 ${
-            isFavorite ? "text-red-600" : "text-[#76513B] hover:text-[#C2410C]"
-          }`}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onToggleFavorite(product.id);
-          }}
-          aria-label={isFavorite ? `Bỏ yêu thích ${product.name}` : `Yêu thích ${product.name}`}
-        >
-          {isFavorite ? "Đã thích" : "Thích"}
-        </button>
       </div>
 
       {/* Info Body */}
@@ -208,8 +232,6 @@ interface ProductShowcaseProps {
   loading: boolean;
   error: string | null;
   onRetry: () => void;
-  favorites: Set<string>;
-  onToggleFavorite: (id: string) => void;
 }
 
 function ProductShowcaseSection({
@@ -219,8 +241,6 @@ function ProductShowcaseSection({
   loading,
   error,
   onRetry,
-  favorites,
-  onToggleFavorite,
 }: ProductShowcaseProps) {
   const [startIndex, setStartIndex] = useState(0);
   const itemsPerPage = 4;
@@ -239,36 +259,44 @@ function ProductShowcaseSection({
   return (
     <section className="py-14 sm:py-20 bg-[#F7F5F1] border-b border-[#D8CFC2]" aria-label={title}>
       <div className="max-w-6xl mx-auto px-5 sm:px-8">
-        {/* Section Header with Left/Right Nav */}
+        {/* Section Header with Professional Chevron Controls */}
         <header className="text-center mb-10">
           {eyebrowScript && (
-            <p className="font-heading italic text-lg sm:text-xl text-[#76513B] mb-1.5">
+            <p className="font-heading italic text-lg sm:text-xl text-[#76513B] mb-2">
               {eyebrowScript}
             </p>
           )}
           <div className="flex items-center justify-center gap-4 sm:gap-6">
+            {/* Nút sang trái chuyên nghiệp với icon chevron */}
             <button
               type="button"
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-35 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs"
+              className="w-10 h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer"
               onClick={handlePrev}
               disabled={startIndex === 0 || loading || products.length <= itemsPerPage}
               aria-label="Xem sản phẩm trước"
+              title="Xem sản phẩm trước"
             >
-              Trước
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
             </button>
 
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-wider text-[#30251D] font-heading uppercase">
               {title}
             </h2>
 
+            {/* Nút sang phải chuyên nghiệp với icon chevron */}
             <button
               type="button"
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-35 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs"
+              className="w-10 h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer"
               onClick={handleNext}
               disabled={startIndex >= maxIndex || loading || products.length <= itemsPerPage}
               aria-label="Xem sản phẩm kế tiếp"
+              title="Xem sản phẩm kế tiếp"
             >
-              Tiếp
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
             </button>
           </div>
         </header>
@@ -294,7 +322,7 @@ function ProductShowcaseSection({
           <div className="text-center py-10 flex flex-col items-center justify-center gap-3" role="alert">
             <p className="text-sm text-red-600">{error}</p>
             <button
-              className="px-6 py-2 bg-[#38291E] hover:bg-[#50392A] text-white text-xs font-bold rounded-full transition-colors"
+              className="px-6 py-2 bg-[#38291E] hover:bg-[#50392A] text-white text-xs font-bold rounded-full transition-colors cursor-pointer"
               onClick={onRetry}
               type="button"
             >
@@ -317,8 +345,6 @@ function ProductShowcaseSection({
               <LandingProductCard
                 key={product.id}
                 product={product}
-                isFavorite={favorites.has(product.id)}
-                onToggleFavorite={onToggleFavorite}
               />
             ))}
           </div>
@@ -364,6 +390,7 @@ function PromotionalBanner() {
               className="inline-flex items-center gap-2 px-7 py-3 bg-[#38291E] hover:bg-[#1F150E] text-[#E7DECE] hover:text-white text-xs sm:text-sm font-extrabold tracking-wider uppercase rounded-full shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5"
             >
               Khám phá ngay
+              <span aria-hidden="true">→</span>
             </Link>
           </div>
 
@@ -433,24 +460,11 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
   const handleRetry = () => {
     setLoading(true);
     setError(null);
     setRetryCount((prev) => prev + 1);
-  };
-
-  const handleToggleFavorite = (id: string) => {
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
   };
 
   useEffect(() => {
@@ -517,8 +531,6 @@ export default function HomePage() {
         loading={loading}
         error={error}
         onRetry={handleRetry}
-        favorites={favorites}
-        onToggleFavorite={handleToggleFavorite}
       />
 
       {/* 4. Thức uống được yêu thích (THỨC UỐNG ĐƯỢC YÊU THÍCH) */}
@@ -529,8 +541,6 @@ export default function HomePage() {
         loading={loading}
         error={error}
         onRetry={handleRetry}
-        favorites={favorites}
-        onToggleFavorite={handleToggleFavorite}
       />
 
       {/* 5. Promotional Coffee Beans Banner */}

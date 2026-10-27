@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ProductCard } from "../../features/products/components/ProductCard";
 import { ProductSkeleton } from "../../features/products/components/ProductSkeleton";
