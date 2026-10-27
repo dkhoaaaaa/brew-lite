@@ -42,7 +42,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             className="lp-pcard__cta"
             aria-label={`Đặt món ${product.name}`}
           >
-            Tùy chỉnh món
+            Đặt món
           </Link>
         </div>
       </div>
