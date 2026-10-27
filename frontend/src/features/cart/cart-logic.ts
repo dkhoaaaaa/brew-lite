@@ -17,6 +17,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getSafeMinorUnits(value: unknown): number | null {
   if (typeof value !== "string") return null;
+  if (value.trim().startsWith("-")) return null;
   try {
     const minorUnits = toMinorUnits(value);
     return Number.isSafeInteger(minorUnits) && minorUnits >= 0
@@ -62,7 +63,8 @@ export function isCartLine(value: unknown): value is CartLine {
     value.quantity > 0 &&
     isProductSizeOption(value.size) &&
     Array.isArray(value.toppings) &&
-    value.toppings.every(isToppingOption)
+    value.toppings.every(isToppingOption) &&
+    new Set(value.toppings.map((topping) => topping.id)).size === value.toppings.length
   );
 }
 
@@ -136,6 +138,30 @@ export function addCartItem(
     : [...current, { ...item, cartItemId: createCartItemId() }];
 
   return getSafeCartTotals(nextItems) === null ? current : nextItems;
+}
+
+export function mergeCartItems(
+  current: CartLine[],
+  incoming: CartLine[],
+  createCartItemId: () => string,
+): CartLine[] | null {
+  let merged = current;
+
+  for (const item of incoming) {
+    if (!isCartLine(item)) return null;
+
+    const existing = merged.find((line) => sameConfiguration(line, item));
+    const next = addCartItem(merged, item, createCartItemId);
+    if (existing) {
+      const updated = next.find((line) => line.cartItemId === existing.cartItemId);
+      if (updated?.quantity !== existing.quantity + item.quantity) return null;
+    } else if (next.length !== merged.length + 1) {
+      return null;
+    }
+    merged = next;
+  }
+
+  return merged;
 }
 
 export function increaseCartItem(current: CartLine[], cartItemId: string): CartLine[] {
