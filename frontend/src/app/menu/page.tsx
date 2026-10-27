@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { ProductCard } from "../../features/products/components/ProductCard";
 import { ProductSkeleton } from "../../features/products/components/ProductSkeleton";
-import { getProducts } from "../../lib/products-api";
 import "../../styles/landing.css";
 import type { ProductSummary } from "../../types/product";
 
@@ -18,12 +16,10 @@ const CATEGORY_TABS: { id: CategoryFilter; label: string }[] = [
   { id: "TOPPING", label: "Topping" },
 ];
 
-/**
- * Phân loại sản phẩm vào 4 nhóm dựa trên tên và mô tả
- */
+const ITEMS_PER_PAGE = 8;
+
 function matchCategory(product: ProductSummary, category: CategoryFilter): boolean {
   if (category === "ALL") return true;
-
   const text = `${product.name} ${product.description ?? ""}`.toLowerCase();
 
   switch (category) {
@@ -35,53 +31,14 @@ function matchCategory(product: ProductSummary, category: CategoryFilter): boole
         text.includes("americano") ||
         text.includes("latte") ||
         text.includes("cappuccino") ||
-        text.includes("macchiato") ||
-        text.includes("mocha") ||
-        text.includes("bạc xỉu") ||
-        text.includes("cold brew") ||
-        text.includes("phin")
+        text.includes("bạc xỉu")
       );
-
     case "TEA":
-      return (
-        text.includes("trà") ||
-        text.includes("tea") ||
-        text.includes("matcha") ||
-        text.includes("ô long") ||
-        text.includes("oolong") ||
-        text.includes("trà sữa") ||
-        text.includes("lục trà") ||
-        text.includes("hồng trà")
-      );
-
+      return text.includes("trà") || text.includes("tea") || text.includes("matcha") || text.includes("ô long");
     case "CAKE":
-      return (
-        text.includes("bánh") ||
-        text.includes("cake") ||
-        text.includes("croissant") ||
-        text.includes("cookie") ||
-        text.includes("mousse") ||
-        text.includes("tiramisu") ||
-        text.includes("pastry") ||
-        text.includes("cheesecake") ||
-        text.includes("donut") ||
-        text.includes("bread")
-      );
-
+      return text.includes("bánh") || text.includes("cake") || text.includes("croissant") || text.includes("tiramisu");
     case "TOPPING":
-      return (
-        text.includes("topping") ||
-        text.includes("thạch") ||
-        text.includes("trân châu") ||
-        text.includes("pudding") ||
-        text.includes("kem cheese") ||
-        text.includes("cheese foam") ||
-        text.includes("sương sáo") ||
-        text.includes("hạt sen") ||
-        text.includes("đào ngâm") ||
-        text.includes("vải")
-      );
-
+      return text.includes("topping") || text.includes("thạch") || text.includes("trân châu");
     default:
       return true;
   }
@@ -89,36 +46,66 @@ function matchCategory(product: ProductSummary, category: CategoryFilter): boole
 
 export default function MenuPage() {
   const [products, setProducts] = useState<ProductSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [retryCount, setRetryCount] = useState<number>(0);
 
-  // Trạng thái tìm kiếm và bộ lọc danh mục
-  const [searchTerm, setSearchTerm] = useState("");
+  // Trạng thái phân trang truyền thống và bộ lọc
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>("ALL");
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
-  function retry() {
+  function retry(): void {
     setLoading(true);
     setError(null);
     setRetryCount((count) => count + 1);
   }
 
+  // Tải toàn bộ sản phẩm từ tất cả các trang của Backend để phân trang 8 món/trang mượt mà
   useEffect(() => {
     let active = true;
     setLoading(true);
 
-    getProducts()
-      .then((result) => {
-        if (active) setProducts(result);
+    // Gọi trang đầu tiên để lấy meta tổng số trang
+    fetch("http://localhost:3001/products?page=1")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
+        return res.json();
       })
-      .catch((cause: unknown) => {
-        if (active) {
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : "Không tải được danh sách sản phẩm."
-          );
+      .then(async (json) => {
+        if (!active) return;
+        const totalPages = json.meta?.totalPages || 11;
+        
+        let allItems = json.data || [];
+
+        // Nếu có nhiều trang, gọi song song các trang còn lại để gom đủ toàn bộ sản phẩm
+        if (totalPages > 1) {
+          const promises = [];
+          for (let p = 2; p <= totalPages; p++) {
+            promises.push(
+              fetch(`http://localhost:3001/products?page=${p}`).then((r) => r.json())
+            );
+          }
+          const results = await Promise.all(promises);
+          results.forEach((r) => {
+            if (r.data) allItems = [...allItems, ...r.data];
+          });
         }
+
+        // Chuẩn hóa đường dẫn hình ảnh trỏ về port 3001
+        const normalizedProducts = allItems.map((p: any) => ({
+          ...p,
+          imageUrl: p.imageUrl
+            ? p.imageUrl.startsWith("http")
+              ? p.imageUrl
+              : `http://localhost:3001${p.imageUrl}`
+            : null,
+        }));
+
+        setProducts(normalizedProducts);
+      })
+      .catch((err) => {
+        if (active) setError(err.message);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -129,20 +116,28 @@ export default function MenuPage() {
     };
   }, [retryCount]);
 
-  // Lọc sản phẩm theo Category và Từ khóa tìm kiếm
+  // Reset về trang 1 khi thay đổi từ khóa tìm kiếm hoặc danh mục
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategory]);
+
+  // Lọc sản phẩm theo danh mục và từ khóa
   const filteredProducts = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
-
     return products.filter((product) => {
-      const matchCat = matchCategory(product, selectedCategory);
-      if (!matchCat) return false;
-
+      if (!matchCategory(product, selectedCategory)) return false;
       if (!query) return true;
-      const name = product.name.toLowerCase();
-      const desc = (product.description ?? "").toLowerCase();
-      return name.includes(query) || desc.includes(query);
+      const text = `${product.name} ${product.description ?? ""}`.toLowerCase();
+      return text.includes(query);
     });
   }, [products, selectedCategory, searchTerm]);
+
+  // Tính toán phân trang truyền thống (8 sản phẩm / trang)
+  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredProducts.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredProducts, currentPage]);
 
   return (
     <div className="menu-page-wrapper">
@@ -158,53 +153,27 @@ export default function MenuPage() {
           </p>
         </header>
 
-        {/* Thanh điều khiển: Tìm kiếm & Tab Lọc danh mục */}
+        {/* Thanh tìm kiếm & Tabs danh mục */}
         <section className="menu-toolbar" aria-label="Bộ lọc và tìm kiếm món">
-          {/* Ô tìm kiếm món */}
           <div className="menu-search-box">
-            <svg
-              className="menu-search-icon"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
             <input
               type="text"
               className="menu-search-input"
               placeholder="Tìm kiếm theo tên món hoặc hương vị..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              aria-label="Tìm kiếm sản phẩm"
             />
             {searchTerm && (
-              <button
-                type="button"
-                className="menu-search-clear"
-                onClick={() => setSearchTerm("")}
-                aria-label="Xóa từ khóa tìm kiếm"
-              >
-                ✕
-              </button>
+              <button className="menu-search-clear" onClick={() => setSearchTerm("")}>✕</button>
             )}
           </div>
 
-          {/* Tab danh mục */}
-          <div className="menu-tabs" role="tablist" aria-label="Danh mục sản phẩm">
+          <div className="menu-tabs" role="tablist">
             {CATEGORY_TABS.map((tab) => {
               const isActive = selectedCategory === tab.id;
               return (
                 <button
                   key={tab.id}
-                  type="button"
                   role="tab"
                   aria-selected={isActive}
                   className={`menu-tab-btn ${isActive ? "is-active" : ""}`}
@@ -217,30 +186,12 @@ export default function MenuPage() {
           </div>
         </section>
 
-        {/* Thanh đếm số lượng kết quả */}
+        {/* Thông tin số lượng */}
         {!loading && !error && (
           <div className="menu-results-count">
             <span>
-              Hiển thị <strong>{filteredProducts.length}</strong> món
-              {selectedCategory !== "ALL" && (
-                <> trong danh mục <strong>{CATEGORY_TABS.find((t) => t.id === selectedCategory)?.label}</strong></>
-              )}
-              {searchTerm && (
-                <> cho từ khóa &quot;<strong>{searchTerm}</strong>&quot;</>
-              )}
+              Hiển thị tổng số <strong>{filteredProducts.length}</strong> món (Trang {currentPage} / {totalPages}, mỗi trang 8 món)
             </span>
-            {(selectedCategory !== "ALL" || searchTerm) && (
-              <button
-                type="button"
-                className="menu-reset-btn"
-                onClick={() => {
-                  setSelectedCategory("ALL");
-                  setSearchTerm("");
-                }}
-              >
-                Đặt lại bộ lọc
-              </button>
-            )}
           </div>
         )}
 
@@ -250,43 +201,54 @@ export default function MenuPage() {
         {/* Trạng thái Lỗi */}
         {error && (
           <div className="menu-state-card" role="alert">
-            <p className="lp-eyebrow">Hệ thống</p>
             <h2>Không thể tải danh sách thực đơn</h2>
             <p>{error}</p>
-            <button className="lp-hero__cta" onClick={retry} type="button">
-              Thử lại
-            </button>
+            <button className="lp-hero__cta" onClick={retry} type="button">Thử lại</button>
           </div>
         )}
 
-        {/* Trạng thái Không có kết quả sau khi tìm kiếm hoặc lọc */}
+        {/* Trạng thái Không có kết quả */}
         {!loading && !error && filteredProducts.length === 0 && (
           <div className="menu-state-card">
-            <p className="lp-eyebrow">Kết quả tìm kiếm</p>
             <h2>Không tìm thấy món phù hợp</h2>
-            <p>
-              Không có sản phẩm nào khớp với lựa chọn hiện tại của bạn. Vui lòng thử từ khóa khác hoặc chọn lại danh mục.
-            </p>
-            <button
-              className="lp-hero__cta"
-              onClick={() => {
-                setSelectedCategory("ALL");
-                setSearchTerm("");
-              }}
-              type="button"
-            >
-              Xem tất cả món
-            </button>
+            <p>Không có sản phẩm nào khớp với lựa chọn của bạn.</p>
           </div>
         )}
 
         {/* Lưới sản phẩm */}
-        {!loading && !error && filteredProducts.length > 0 && (
+        {!loading && !error && paginatedProducts.length > 0 && (
           <section className="lp-product-grid" aria-label="Danh sách món">
-            {filteredProducts.map((product) => (
+            {paginatedProducts.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
           </section>
+        )}
+
+        {/* Thanh chuyển trang truyền thống (Pagination Controls) */}
+        {!loading && !error && totalPages > 1 && (
+          <div className="flex justify-center items-center gap-4 mt-8 pb-12">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage <= 1}
+              className="px-4 py-2 bg-amber-800 text-white rounded-lg disabled:opacity-40 hover:bg-amber-900 transition cursor-pointer"
+            >
+              Trang trước
+            </button>
+
+            <span className="font-medium text-gray-700">
+              Trang {currentPage} / {totalPages}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage >= totalPages}
+              className="px-4 py-2 bg-amber-800 text-white rounded-lg disabled:opacity-40 hover:bg-amber-900 transition cursor-pointer"
+            >
+              Trang sau
+            </button>
+          </div>
         )}
       </main>
     </div>
