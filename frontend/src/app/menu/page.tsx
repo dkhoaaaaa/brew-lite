@@ -18,19 +18,30 @@ const CATEGORY_TABS: { id: CategoryFilter; label: string }[] = [
 
 const ITEMS_PER_PAGE = 8;
 
-function matchCategory(product: ProductSummary, category: CategoryFilter): boolean {
+/**
+ * Lọc thuần túy theo Category (từ CSDL), tuyệt đối không phụ thuộc tên hay mô tả sản phẩm
+ */
+function matchCategory(product: any, category: CategoryFilter): boolean {
   if (category === "ALL") return true;
-  const catName = product.categoryName?.trim().toLowerCase() ?? "";
+
+  const catName = (product.categoryName ?? "").trim().toLowerCase();
+  const catId = product.categoryId ? String(product.categoryId) : "";
 
   switch (category) {
     case "COFFEE":
-      return catName.includes("cà phê") || catName.includes("coffee");
+      // Khớp theo categoryId = 1 hoặc tên danh mục là 'Cà phê'
+      return catId === "1" || catName === "cà phê" || catName === "coffee";
+
     case "TEA":
-      return catName.includes("trà") || catName.includes("tea");
+      // Khớp theo categoryId = 7 hoặc tên danh mục là 'Trà'
+      return catId === "7" || catName === "trà" || catName === "tea";
+
     case "CAKE":
-      return catName.includes("bánh") || catName.includes("cake") || catName.includes("dessert");
+      // Khớp theo categoryId = 8 hoặc tên danh mục là 'Bánh'
+      return catId === "8" || catName === "bánh" || catName === "cake" || catName === "dessert";
+
     default:
-      return true;
+      return false;
   }
 }
 
@@ -43,7 +54,7 @@ function MenuContent() {
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
 
-  // Trạng thái phân trang truyền thống và bộ lọc
+  // Trạng thái phân trang và bộ lọc
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>(() => {
     if (categoryParam) {
@@ -72,12 +83,11 @@ function MenuContent() {
     setRetryCount((count) => count + 1);
   }
 
-  // Tải toàn bộ sản phẩm từ tất cả các trang của Backend để phân trang 8 món/trang mượt mà
+  // Tải danh sách sản phẩm từ backend
   useEffect(() => {
     let active = true;
     setLoading(true);
 
-    // Gọi trang đầu tiên để lấy meta tổng số trang
     fetch("http://localhost:3001/products?page=1")
       .then(async (res) => {
         if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
@@ -85,25 +95,30 @@ function MenuContent() {
       })
       .then(async (json) => {
         if (!active) return;
-        const totalPages = json.meta?.totalPages || 11;
-        
-        let allItems = json.data || [];
 
-        // Nếu có nhiều trang, gọi song song các trang còn lại để gom đủ toàn bộ sản phẩm
-        if (totalPages > 1) {
-          const promises = [];
-          for (let p = 2; p <= totalPages; p++) {
-            promises.push(
-              fetch(`http://localhost:3001/products?page=${p}`).then((r) => r.json())
-            );
+        let allItems: any[] = [];
+
+        if (Array.isArray(json)) {
+          allItems = json;
+        } else if (Array.isArray(json.data)) {
+          allItems = json.data;
+          const totalPages = json.meta?.totalPages || 1;
+
+          if (totalPages > 1) {
+            const promises = [];
+            for (let p = 2; p <= totalPages; p++) {
+              promises.push(
+                fetch(`http://localhost:3001/products?page=${p}`).then((r) => r.json())
+              );
+            }
+            const results = await Promise.all(promises);
+            results.forEach((r) => {
+              if (Array.isArray(r.data)) allItems = [...allItems, ...r.data];
+              else if (Array.isArray(r)) allItems = [...allItems, ...r];
+            });
           }
-          const results = await Promise.all(promises);
-          results.forEach((r) => {
-            if (r.data) allItems = [...allItems, ...r.data];
-          });
         }
 
-        // Chuẩn hóa đường dẫn hình ảnh trỏ về port 3001
         const normalizedProducts = allItems.map((p: any) => ({
           ...p,
           categoryId: p.categoryId ?? null,
@@ -118,7 +133,7 @@ function MenuContent() {
         setProducts(normalizedProducts);
       })
       .catch((err) => {
-        if (active) setError(err.message);
+        if (active) setError(err instanceof Error ? err.message : "Đã xảy ra lỗi");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -129,12 +144,12 @@ function MenuContent() {
     };
   }, [retryCount]);
 
-  // Reset về trang 1 khi thay đổi từ khóa tìm kiếm hoặc danh mục
+  // Đưa về trang 1 khi thay đổi từ khóa hoặc danh mục
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, selectedCategory]);
 
-  // Lọc sản phẩm theo danh mục và từ khóa
+  // Lọc sản phẩm: Danh mục lọc theo category của CSDL; từ khóa chỉ áp dụng khi người dùng gõ vào ô tìm kiếm
   const filteredProducts = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return products.filter((product) => {
@@ -145,7 +160,7 @@ function MenuContent() {
     });
   }, [products, selectedCategory, searchTerm]);
 
-  // Tính toán phân trang truyền thống (8 sản phẩm / trang)
+  // Phân trang 8 sản phẩm / trang
   const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
   const paginatedProducts = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -175,18 +190,27 @@ function MenuContent() {
               placeholder="Tìm kiếm theo tên món hoặc hương vị..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              aria-label="Tìm kiếm sản phẩm"
             />
             {searchTerm && (
-              <button className="menu-search-clear" onClick={() => setSearchTerm("")}>✕</button>
+              <button
+                type="button"
+                className="menu-search-clear"
+                onClick={() => setSearchTerm("")}
+                aria-label="Xóa từ khóa"
+              >
+                ✕
+              </button>
             )}
           </div>
 
-          <div className="menu-tabs" role="tablist">
+          <div className="menu-tabs" role="tablist" aria-label="Danh mục món">
             {CATEGORY_TABS.map((tab) => {
               const isActive = selectedCategory === tab.id;
               return (
                 <button
                   key={tab.id}
+                  type="button"
                   role="tab"
                   aria-selected={isActive}
                   className={`menu-tab-btn ${isActive ? "is-active" : ""}`}
@@ -214,9 +238,11 @@ function MenuContent() {
         {/* Trạng thái Lỗi */}
         {error && (
           <div className="menu-state-card" role="alert">
-            <h2>Không thể tải danh sách thực đơn</h2>
-            <p>{error}</p>
-            <button className="lp-hero__cta" onClick={retry} type="button">Thử lại</button>
+            <h2 className="text-xl font-bold mb-2">Không thể tải danh sách thực đơn</h2>
+            <p className="text-sm text-stone-600 mb-6">{error}</p>
+            <button className="lp-hero__cta" onClick={retry} type="button">
+              Thử lại
+            </button>
           </div>
         )}
 
@@ -247,7 +273,7 @@ function MenuContent() {
           </section>
         )}
 
-        {/* Thanh chuyển trang truyền thống (Pagination Controls) */}
+        {/* Thanh chuyển trang truyền thống */}
         {!loading && !error && totalPages > 1 && (
           <div className="flex justify-center items-center gap-4 mt-8 pb-12">
             <button
