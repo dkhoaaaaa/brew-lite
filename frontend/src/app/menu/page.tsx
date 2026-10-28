@@ -77,6 +77,7 @@ function MenuContent() {
     let active = true;
     setLoading(true);
 
+    // Gọi trang đầu tiên để lấy meta tổng số trang
     fetch("http://localhost:3001/products?page=1")
       .then(async (res) => {
         if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
