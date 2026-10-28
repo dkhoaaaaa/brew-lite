@@ -36,11 +36,10 @@ export class ProductsService {
     }));
   }
 
-  // Hàm mới phục vụ Phân trang (5 sản phẩm / trang)
+  // Hàm phục vụ Phân trang (Đã bổ sung categoryId và categoryName chuẩn xác)
   async findAllPaginated(page: number = 1, limit: number = 5) {
     const skip = (page - 1) * limit;
 
-    // Sử dụng Promise.all để chạy song song việc lấy dữ liệu trang và đếm tổng số lượng (tối ưu hiệu suất)
     const [products, totalItems] = await Promise.all([
       this.prisma.product.findMany({
         where: { isActive: true },
@@ -53,6 +52,13 @@ export class ProductsService {
           description: true,
           price: true,
           imageUrl: true,
+          categoryId: true,
+          category: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
         },
       }),
       this.prisma.product.count({
@@ -61,9 +67,13 @@ export class ProductsService {
     ]);
 
     const formattedProducts = products.map((product) => ({
-      ...product,
       id: product.id.toString(),
+      name: product.name,
+      description: product.description,
       price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId ? product.categoryId.toString() : null,
+      categoryName: product.category?.name ?? null,
     }));
 
     return {
