@@ -256,7 +256,7 @@ function CheckoutContent() {
       <Link className="back-link" href="/cart">Quay lại giỏ hàng</Link>
       <header className="checkout-heading">
         <p className="eyebrow">BrewLite · checkout thử nghiệm</p>
-        <h1>Hoàn tất thanh toán</h1>
+        <h1>Thanh toán thành công</h1>
         <p>Đây là luồng thanh toán mô phỏng kết nối database thật. Đơn hàng sẽ chuyển sang trạng thái PAID khi hoàn tất.</p>
         
         {timeLeft !== null && (
@@ -329,7 +329,7 @@ function CheckoutContent() {
           </fieldset>
 
           <fieldset className="option-group">
-            <legend>Kết quả mô phỏng</legend>
+            <legend> Kết quả mô phỏng</legend>
             <div aria-label="Kết quả thanh toán giả lập" className="outcome-toggle" role="group">
               <button
                 aria-pressed={outcome === "success"}
@@ -380,7 +380,7 @@ function CheckoutContent() {
               className="payment-result payment-result--failure"
               role="status"
             >
-              <strong>Kết quả mô phỏng: thất bại</strong>
+              <strong> Kết quả mô phỏng: thất bại</strong>
               <p>{result?.message || "Lần thanh toán trước không thành công."}</p>
               <small>Đơn hàng chuyển sang trạng thái PAYMENT_FAILED. Bạn có thể chọn lại phương thức và thử lại trước khi hết thời gian 2 phút.</small>
             </section>

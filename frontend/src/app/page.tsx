@@ -159,13 +159,20 @@ interface LandingProductCardProps {
 }
 
 function LandingProductCard({ product }: LandingProductCardProps) {
+  // Chuẩn hóa đường dẫn ảnh để trỏ trực tiếp về backend port 3001
+  const fullImageUrl = product.imageUrl
+    ? product.imageUrl.startsWith("http")
+      ? product.imageUrl
+      : `http://localhost:3001${product.imageUrl}`
+    : "";
+
   return (
     <article className="group bg-white border border-[#D8CFC2] hover:border-[#76513B] rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-1 hover:shadow-lg relative">
       {/* Media Image */}
       <div className="relative aspect-[4/5] bg-[#EAE5DD] overflow-hidden">
-        {product.imageUrl ? (
+        {fullImageUrl ? (
           <Image
-            src={product.imageUrl}
+            src={fullImageUrl}
             alt={product.name}
             fill
             unoptimized
@@ -267,7 +274,6 @@ function ProductShowcaseSection({
             </p>
           )}
           <div className="flex items-center justify-center gap-4 sm:gap-6">
-            {/* Nút sang trái chuyên nghiệp với icon chevron */}
             <button
               type="button"
               className="w-10 h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer"
@@ -285,7 +291,6 @@ function ProductShowcaseSection({
               {title}
             </h2>
 
-            {/* Nút sang phải chuyên nghiệp với icon chevron */}
             <button
               type="button"
               className="w-10 h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer"
@@ -361,7 +366,6 @@ function PromotionalBanner() {
     <section className="bg-[#E7DECE] py-14 sm:py-20 border-b border-[#D8CFC2]" aria-label="Khám phá hạt cà phê nguyên chất">
       <div className="max-w-6xl mx-auto px-5 sm:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr_1fr] items-center gap-6 sm:gap-8">
-          {/* Left Decorative Image */}
           <div className="hidden lg:block relative aspect-square rounded-2xl overflow-hidden shadow-md">
             <Image
               src="/promo-coffee.jpg"
@@ -373,7 +377,6 @@ function PromotionalBanner() {
             />
           </div>
 
-          {/* Center Text & CTA */}
           <div className="text-center px-4">
             <p className="text-xs font-bold tracking-[0.15em] uppercase text-[#76513B] mb-2.5">
               Đặc quyền chất lượng
@@ -394,7 +397,6 @@ function PromotionalBanner() {
             </Link>
           </div>
 
-          {/* Right Decorative Image */}
           <div className="hidden lg:block relative aspect-square rounded-2xl overflow-hidden shadow-md">
             <Image
               src="/promo-coffee.jpg"
@@ -418,7 +420,6 @@ function SiteFooterV2() {
     <footer className="bg-[#38291E] text-[#E7DECE]/70 pt-16 pb-8" role="contentinfo">
       <div className="max-w-6xl mx-auto px-5 sm:px-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 pb-12 border-b border-[#D8CFC2]/15">
-          {/* Brand Info */}
           <div className="flex flex-col gap-3.5 sm:col-span-2 lg:col-span-2">
             <span className="font-heading text-2xl font-bold text-[#E7DECE] tracking-wider uppercase">
               BrewLite
@@ -429,7 +430,6 @@ function SiteFooterV2() {
             </p>
           </div>
 
-          {/* Contact Info */}
           <div>
             <h4 className="text-xs font-extrabold tracking-wider uppercase text-[#E7DECE] mb-4">
               Liên hệ
@@ -443,7 +443,6 @@ function SiteFooterV2() {
           </div>
         </div>
 
-        {/* Bottom Bar */}
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#E7DECE]/45 text-center sm:text-left">
           <p>© 2025 BrewLite Coffee. All rights reserved.</p>
           <p>Thiết kế phong cách Modern Coffee Shop.</p>
@@ -493,7 +492,6 @@ export default function HomePage() {
     };
   }, [retryCount]);
 
-  // Phân loại nhóm Cà phê và nhóm Thức uống khác từ danh sách sản phẩm thực tế
   const isCoffeeItem = (name: string) => {
     const n = name.toLowerCase();
     return (
@@ -517,13 +515,9 @@ export default function HomePage() {
 
   return (
     <div className="bg-[#F7F5F1] min-h-screen text-[#30251D] font-sans">
-      {/* 1. Hero Banner */}
       <HeroSection />
-
-      {/* 2. Categories Bar */}
       <CategoriesBar />
 
-      {/* 3. Cà phê nổi bật (OUR SPECIAL COFFEE) */}
       <ProductShowcaseSection
         eyebrowScript="Thưởng thức tinh hoa"
         title="OUR SPECIAL COFFEE"
@@ -533,7 +527,6 @@ export default function HomePage() {
         onRetry={handleRetry}
       />
 
-      {/* 4. Thức uống được yêu thích (THỨC UỐNG ĐƯỢC YÊU THÍCH) */}
       <ProductShowcaseSection
         eyebrowScript="Thanh mát & ngọt ngào"
         title="THỨC UỐNG ĐƯỢC YÊU THÍCH"
@@ -543,10 +536,7 @@ export default function HomePage() {
         onRetry={handleRetry}
       />
 
-      {/* 5. Promotional Coffee Beans Banner */}
       <PromotionalBanner />
-
-      {/* 6. Footer */}
       <SiteFooterV2 />
     </div>
   );
