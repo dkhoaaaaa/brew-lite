@@ -91,7 +91,6 @@ export default function OrdersPage() {
       <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 flex items-center justify-center font-sans text-[#30251D]">
         <div className="max-w-md w-full bg-white border border-[#DED6CB] rounded-2xl p-8 text-center shadow-sm">
           <div className="w-12 h-12 rounded-full bg-[#EAE3D8] text-[#76513B] flex items-center justify-center mx-auto mb-4 text-xl font-bold">
-            🔒
           </div>
           <h1 className="text-2xl font-bold text-[#30251D] mb-2 font-heading">
             Vui lòng đăng nhập

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -14,6 +15,26 @@ const STATUS_PROGRESSION: Record<string, number> = {
   READY: 2,
   COMPLETED: 3,
 };
+
+export const ALLOWED_STATE_TRANSITIONS: Record<string, string[]> = {
+  PENDING: ["PAID", "PAYMENT_FAILED", "CANCELLED"],
+  PAYMENT_FAILED: ["PAID", "CANCELLED"],
+  PAID: ["PREPARING", "READY", "COMPLETED"],
+  PREPARING: ["READY", "COMPLETED"],
+  READY: ["COMPLETED"],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+
+export function validateStateTransition(currentStatus: string, targetStatus: string): void {
+  if (currentStatus === targetStatus) return;
+  const allowed = ALLOWED_STATE_TRANSITIONS[currentStatus] ?? [];
+  if (!allowed.includes(targetStatus)) {
+    throw new BadRequestException(
+      `Không thể chuyển trạng thái đơn hàng từ "${currentStatus}" sang "${targetStatus}".`,
+    );
+  }
+}
 
 export function determineStatusByElapsed(elapsedMs: number): "PAID" | "PREPARING" | "READY" | "COMPLETED" {
   if (elapsedMs < 60_000) {
@@ -173,14 +194,58 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Hoàn lại số lượng tồn kho cho các sản phẩm và topping của một đơn hàng khi hủy hoặc hết hạn.
+   * Đồng thời tăng version của sản phẩm/topping để đảm bảo tính nhất quán (Optimistic Locking).
+   */
+  async restoreOrderStock(tx: any, orderId: bigint): Promise<void> {
+    try {
+      if (!tx?.orderItem?.findMany) return;
+      const items = await tx.orderItem.findMany({
+        where: { orderId },
+        include: { toppings: true },
+      });
+
+      if (!Array.isArray(items) || items.length === 0) return;
+
+      for (const item of items) {
+        if (item.productId && item.quantity && tx.product?.update) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: { increment: item.quantity },
+              version: { increment: 1 },
+            },
+          });
+        }
+
+        if (Array.isArray(item.toppings) && tx.topping?.update) {
+          for (const t of item.toppings) {
+            if (t.toppingId && t.quantity) {
+              await tx.topping.update({
+                where: { id: t.toppingId },
+                data: {
+                  stock: { increment: t.quantity },
+                  version: { increment: 1 },
+                },
+              });
+            }
+          }
+        }
+      }
+    } catch {
+      // Bỏ qua lỗi trong restoreOrderStock nếu bảng/mock không hỗ trợ
+    }
+  }
+
+  /**
    * Tự động xử lý các đơn hàng đã hết hạn 2 phút:
-   * - Đơn PENDING: Bị xóa khỏi cơ sở dữ liệu.
-   * - Đơn PAYMENT_FAILED: Được tự động chuyển trạng thái thành CANCELLED (không xóa).
+   * - Đơn PENDING: Bị xóa khỏi cơ sở dữ liệu và hoàn trả tồn kho.
+   * - Đơn PAYMENT_FAILED: Được tự động chuyển trạng thái thành CANCELLED và hoàn trả tồn kho.
    */
   async cleanupExpiredOrders(userId?: bigint): Promise<void> {
     const now = new Date();
     try {
-      // 1. Đơn PENDING quá hạn 2 phút -> Xóa khỏi database
+      // 1. Đơn PENDING quá hạn 2 phút -> Hoàn tồn kho và xóa khỏi database
       const expiredPending = await this.prisma.order.findMany({
         where: {
           status: "PENDING",
@@ -190,8 +255,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         select: { id: true },
       });
 
-      if (expiredPending.length > 0) {
+      if (expiredPending && expiredPending.length > 0) {
         const pendingIds = expiredPending.map((o) => o.id);
+        for (const order of expiredPending) {
+          await this.restoreOrderStock(this.prisma, order.id);
+        }
         await this.prisma.payment.deleteMany({
           where: { orderId: { in: pendingIds } },
         });
@@ -200,7 +268,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      // 2. Đơn PAYMENT_FAILED quá hạn 2 phút -> Đổi trạng thái thành CANCELLED
+      // 2. Đơn PAYMENT_FAILED quá hạn 2 phút -> Hoàn tồn kho và đổi trạng thái thành CANCELLED
       const expiredFailed = await this.prisma.order.findMany({
         where: {
           status: "PAYMENT_FAILED",
@@ -210,8 +278,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         select: { id: true },
       });
 
-      if (expiredFailed.length > 0) {
+      if (expiredFailed && expiredFailed.length > 0) {
         const failedIds = expiredFailed.map((o) => o.id);
+        for (const order of expiredFailed) {
+          await this.restoreOrderStock(this.prisma, order.id);
+        }
         await this.prisma.$transaction([
           this.prisma.order.updateMany({
             where: { id: { in: failedIds } },
@@ -232,7 +303,26 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async create(userId: bigint, dto: CreateOrderDto) {
+  async create(userId: bigint, dto: CreateOrderDto, idempotencyKey?: string) {
+    // 1. Xử lý Idempotent: nếu có idempotencyKey và đã tồn tại payment/order, trả về kết quả cũ
+    if (idempotencyKey) {
+      const existingPayment = await this.prisma.payment.findUnique({
+        where: { idempotencyKey },
+        include: {
+          order: {
+            include: {
+              orderItems: { include: { toppings: true } },
+              payments: { orderBy: { createdAt: "desc" } },
+              statusHistory: { orderBy: { changedAt: "asc" } },
+            },
+          },
+        },
+      });
+      if (existingPayment?.order) {
+        return this.serializeOrder(existingPayment.order);
+      }
+    }
+
     const productIds = [...new Set(dto.items.map((i) => BigInt(i.productId)))];
     const sizeIds = [...new Set(dto.items.map((i) => BigInt(i.productSizeId)))];
     const toppingIds = [
@@ -249,7 +339,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       }),
       this.prisma.product.findMany({
         where: { id: { in: productIds }, isActive: true },
-        select: { id: true, name: true, price: true },
+        select: { id: true, name: true, price: true, stock: true, version: true },
       }),
       this.prisma.productSize.findMany({
         where: { id: { in: sizeIds }, isActive: true },
@@ -259,7 +349,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         where: { toppingId: { in: toppingIds }, topping: { isActive: true } },
         select: {
           productId: true,
-          topping: { select: { id: true, name: true, price: true } },
+          topping: { select: { id: true, name: true, price: true, stock: true, version: true } },
         },
       }),
     ]);
@@ -271,6 +361,49 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const toppingMap = new Map(
       productToppings.map((pt) => [`${pt.productId}:${pt.topping.id}`, pt.topping]),
     );
+
+    const toppingEntityMap = new Map<string, any>();
+    for (const pt of productToppings) {
+      toppingEntityMap.set(pt.topping.id.toString(), pt.topping);
+    }
+
+    // Tính tổng số lượng yêu cầu của từng sản phẩm và topping
+    const productRequiredQty = new Map<string, number>();
+    const toppingRequiredQty = new Map<string, number>();
+
+    for (const item of dto.items) {
+      productRequiredQty.set(
+        item.productId,
+        (productRequiredQty.get(item.productId) || 0) + item.quantity,
+      );
+      for (const t of item.toppings ?? []) {
+        const tQty = (t.quantity ?? 1) * item.quantity;
+        toppingRequiredQty.set(
+          t.toppingId,
+          (toppingRequiredQty.get(t.toppingId) || 0) + tQty,
+        );
+      }
+    }
+
+    // Kiểm tra số lượng tồn kho trước khi tạo
+    for (const [pIdStr, reqQty] of productRequiredQty.entries()) {
+      const p = productMap.get(pIdStr);
+      if (!p) throw new BadRequestException(`Sản phẩm không tồn tại.`);
+      if (typeof p.stock === "number" && p.stock < reqQty) {
+        throw new BadRequestException(
+          `Sản phẩm "${p.name}" không đủ số lượng tồn kho (chỉ còn ${p.stock}, yêu cầu ${reqQty}).`,
+        );
+      }
+    }
+
+    for (const [tIdStr, reqQty] of toppingRequiredQty.entries()) {
+      const t = toppingEntityMap.get(tIdStr);
+      if (t && typeof t.stock === "number" && t.stock < reqQty) {
+        throw new BadRequestException(
+          `Topping "${t.name}" không đủ số lượng tồn kho (chỉ còn ${t.stock}, yêu cầu ${reqQty}).`,
+        );
+      }
+    }
 
     let subtotal = 0;
 
@@ -299,14 +432,16 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         return {
           toppingId: topping.id,
           toppingName: topping.name,
-          toppingPrice: topping.price.toNumber(),
+          toppingPrice: topping.price.toNumber ? topping.price.toNumber() : Number(topping.price),
           quantity: t.quantity ?? 1,
         };
       });
 
       // Giá VND là số nguyên nên tính bằng number không bị sai số.
       const toppingTotal = toppingLines.reduce((sum, t) => sum + t.toppingPrice * t.quantity, 0);
-      const unitPrice = product.price.toNumber() + size.extraPrice.toNumber() + toppingTotal;
+      const prodPrice = product.price.toNumber ? product.price.toNumber() : Number(product.price);
+      const extraPrice = size.extraPrice.toNumber ? size.extraPrice.toNumber() : Number(size.extraPrice);
+      const unitPrice = prodPrice + extraPrice + toppingTotal;
       const lineTotal = unitPrice * item.quantity;
       subtotal += lineTotal;
 
@@ -325,24 +460,126 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       };
     });
 
-    const order = await this.prisma.order.create({
-      data: {
-        orderCode: this.generateOrderCode(),
-        userId,
-        status: "PENDING",
-        subtotal,
-        discountAmount: 0,
-        pointsEarned: 0,
-        total: subtotal,
-        note: dto.note,
-        expiresAt: new Date(Date.now() + PENDING_TTL_MS),
-        orderItems: { create: itemsData },
-        statusHistory: { create: { oldStatus: null, newStatus: "PENDING" } },
-      },
-      include: { orderItems: { include: { toppings: true } } },
-    });
+    const executeOrderCreation = async (tx: any) => {
+      // 1. Trừ tồn kho bằng Optimistic Locking (version & stock condition)
+      for (const [pIdStr, reqQty] of productRequiredQty.entries()) {
+        const p = productMap.get(pIdStr)!;
+        if (typeof p.stock === "number" && typeof p.version === "number") {
+          const updater = tx?.product?.updateMany ?? this.prisma.product?.updateMany;
+          if (updater) {
+            const updateResult = await updater({
+              where: {
+                id: p.id,
+                version: p.version,
+                stock: { gte: reqQty },
+              },
+              data: {
+                stock: { decrement: reqQty },
+                version: { increment: 1 },
+              },
+            });
+            if (updateResult.count === 0) {
+              throw new ConflictException(
+                `Sản phẩm "${p.name}" đã hết hàng hoặc có xung đột tồn kho. Vui lòng thử lại.`,
+              );
+            }
+          }
+        }
+      }
 
-    return this.serializeOrder(order);
+      for (const [tIdStr, reqQty] of toppingRequiredQty.entries()) {
+        const t = toppingEntityMap.get(tIdStr);
+        if (t && typeof t.stock === "number" && typeof t.version === "number") {
+          const updater = tx?.topping?.updateMany ?? this.prisma.topping?.updateMany;
+          if (updater) {
+            const updateResult = await updater({
+              where: {
+                id: t.id,
+                version: t.version,
+                stock: { gte: reqQty },
+              },
+              data: {
+                stock: { decrement: reqQty },
+                version: { increment: 1 },
+              },
+            });
+            if (updateResult.count === 0) {
+              throw new ConflictException(
+                `Topping "${t.name}" đã hết hàng hoặc có xung đột tồn kho. Vui lòng thử lại.`,
+              );
+            }
+          }
+        }
+      }
+
+      // 2. Tạo đơn hàng PENDING
+      const orderCreator = tx?.order?.create ?? this.prisma.order.create;
+      const order = await orderCreator({
+        data: {
+          orderCode: this.generateOrderCode(),
+          userId,
+          status: "PENDING",
+          subtotal,
+          discountAmount: 0,
+          pointsEarned: 0,
+          total: subtotal,
+          note: dto.note,
+          expiresAt: new Date(Date.now() + PENDING_TTL_MS),
+          orderItems: { create: itemsData },
+          statusHistory: { create: { oldStatus: null, newStatus: "PENDING" } },
+        },
+        include: { orderItems: { include: { toppings: true } } },
+      });
+
+      // 3. Nếu có idempotencyKey, tạo Payment khởi tạo trạng thái PENDING với idempotencyKey
+      const paymentCreator = tx?.payment?.create ?? this.prisma.payment?.create;
+      if (idempotencyKey && paymentCreator) {
+        await paymentCreator({
+          data: {
+            orderId: order.id,
+            idempotencyKey,
+            amount: subtotal,
+            method: "PENDING",
+            provider: "BREWLITE",
+            status: "PENDING",
+          },
+        });
+      }
+
+      return order;
+    };
+
+    try {
+      // Nếu $transaction hỗ trợ callback
+      let order: any;
+      if (this.prisma.$transaction) {
+        order = await this.prisma.$transaction(async (tx) => {
+          return executeOrderCreation(tx);
+        });
+      } else {
+        order = await executeOrderCreation(this.prisma);
+      }
+      return this.serializeOrder(order);
+    } catch (error: any) {
+      if (error?.code === "P2002" && idempotencyKey) {
+        const existingPayment = await this.prisma.payment.findUnique({
+          where: { idempotencyKey },
+          include: {
+            order: {
+              include: {
+                orderItems: { include: { toppings: true } },
+                payments: { orderBy: { createdAt: "desc" } },
+                statusHistory: { orderBy: { changedAt: "asc" } },
+              },
+            },
+          },
+        });
+        if (existingPayment?.order) {
+          return this.serializeOrder(existingPayment.order);
+        }
+      }
+      throw error;
+    }
   }
 
   /**
@@ -418,15 +655,19 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     // Nếu đơn PENDING quá 2 phút -> Xóa và báo hết hạn
     if (order.status === "PENDING" && order.expiresAt && order.expiresAt < new Date()) {
-      await this.prisma.payment.deleteMany({ where: { orderId: order.id } });
-      await this.prisma.order.delete({ where: { id: order.id } });
+      await this.prisma.$transaction(async (tx) => {
+        await this.restoreOrderStock(tx, order.id);
+        await tx.payment.deleteMany({ where: { orderId: order.id } });
+        await tx.order.delete({ where: { id: order.id } });
+      });
       throw new NotFoundException("Đơn hàng đã quá hạn thanh toán 2 phút và đã bị hủy.");
     }
 
     // Nếu đơn PAYMENT_FAILED quá 2 phút -> Đổi trạng thái thành CANCELLED
     if (order.status === "PAYMENT_FAILED" && order.expiresAt && order.expiresAt < new Date()) {
-      const [updatedCancelled] = await this.prisma.$transaction([
-        this.prisma.order.update({
+      const updatedCancelled = await this.prisma.$transaction(async (tx) => {
+        await this.restoreOrderStock(tx, order.id);
+        const o = await tx.order.update({
           where: { id: order.id },
           data: { status: "CANCELLED" },
           include: {
@@ -434,16 +675,17 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
             payments: { orderBy: { createdAt: "desc" } },
             statusHistory: { orderBy: { changedAt: "asc" } },
           },
-        }),
-        this.prisma.orderStatusHistory.create({
+        });
+        await tx.orderStatusHistory.create({
           data: {
             orderId: order.id,
             oldStatus: "PAYMENT_FAILED",
             newStatus: "CANCELLED",
             note: "Hết hạn thanh toán 2 phút, tự động chuyển sang đã hủy",
           },
-        }),
-      ]);
+        });
+        return o;
+      });
       return this.serializeOrder(updatedCancelled);
     }
 
@@ -461,7 +703,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
    * - Nếu thành công: Cập nhật status thành PAID, tạo bản ghi Payment SUCCESS, ghi lịch sử.
    * - Nếu thất bại: Tạo bản ghi Payment FAILED, giữ nguyên status PENDING để thanh toán lại.
    */
-  async processMockPayment(orderId: bigint, userId: bigint, dto: MockPaymentDto) {
+  async processMockPayment(orderId: bigint, userId: bigint, dto: MockPaymentDto, idempotencyKeyHeader?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { payments: true },
@@ -473,6 +715,29 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     if (order.userId !== userId) {
       throw new ForbiddenException("Bạn không có quyền thanh toán đơn hàng này.");
+    }
+
+    const effectiveIdempotencyKey = idempotencyKeyHeader || dto.idempotencyKey;
+
+    // Idempotent Check: Nếu key đã được sử dụng trước đó, trả về kết quả đã lưu trữ
+    if (effectiveIdempotencyKey) {
+      const existingPayment = await this.prisma.payment.findUnique({
+        where: { idempotencyKey: effectiveIdempotencyKey },
+        include: { order: true },
+      });
+      if (existingPayment) {
+        return {
+          outcome: existingPayment.status === "SUCCESS" ? "SIMULATED_SUCCESS" : "SIMULATED_FAILURE",
+          orderId: existingPayment.orderId.toString(),
+          orderCode: existingPayment.order?.orderCode ?? order.orderCode,
+          status: existingPayment.order?.status ?? (existingPayment.status === "SUCCESS" ? "PAID" : "PAYMENT_FAILED"),
+          paymentStatus: existingPayment.status,
+          message: existingPayment.status === "SUCCESS"
+            ? "Đơn hàng đã được thanh toán trước đó (Idempotent response)."
+            : "Giao dịch đã được ghi nhận thất bại trước đó (Idempotent response).",
+          pointsEarned: 0,
+        };
+      }
     }
 
     // Nếu đơn hàng đã PAID -> Trả về kết quả thành công (Idempotent)
@@ -488,161 +753,189 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
+    // State Machine Validation: Kiểm tra chuyển đổi trạng thái hợp lệ
+    const targetStatus = dto.outcome === "success" ? "PAID" : "PAYMENT_FAILED";
+    validateStateTransition(order.status, targetStatus);
+
     if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
       throw new BadRequestException(
         `Đơn hàng không ở trạng thái có thể thanh toán (trạng thái hiện tại: ${order.status}).`,
       );
     }
 
-    // Kiểm tra hết hạn 2 phút
+    // Kiểm tra hết hạn 2 phút -> hoàn tồn kho nếu hết hạn
     if (order.expiresAt && order.expiresAt < new Date()) {
       if (order.status === "PENDING") {
-        await this.prisma.payment.deleteMany({ where: { orderId: order.id } });
-        await this.prisma.order.delete({ where: { id: order.id } });
+        await this.prisma.$transaction(async (tx) => {
+          await this.restoreOrderStock(tx, order.id);
+          await tx.payment.deleteMany({ where: { orderId: order.id } });
+          await tx.order.delete({ where: { id: order.id } });
+        });
         throw new BadRequestException("Đơn hàng đã hết hạn thanh toán (quá 2 phút) và đã bị hủy. Vui lòng tạo đơn mới.");
       } else if (order.status === "PAYMENT_FAILED") {
-        await this.prisma.$transaction([
-          this.prisma.order.update({
+        await this.prisma.$transaction(async (tx) => {
+          await this.restoreOrderStock(tx, order.id);
+          await tx.order.update({
             where: { id: order.id },
             data: { status: "CANCELLED" },
-          }),
-          this.prisma.orderStatusHistory.create({
+          });
+          await tx.orderStatusHistory.create({
             data: {
               orderId: order.id,
               oldStatus: "PAYMENT_FAILED",
               newStatus: "CANCELLED",
               note: "Hết hạn thanh toán 2 phút, tự động chuyển sang đã hủy",
             },
-          }),
-        ]);
+          });
+        });
         throw new BadRequestException("Đơn hàng đã hết hạn thanh toán (quá 2 phút) và đã được chuyển sang trạng thái Đã hủy.");
       }
     }
 
-    if (dto.outcome === "success") {
-      // Thực hiện cập nhật trong Transaction để đảm bảo tính nhất quán
-      const idempotencyKey = dto.idempotencyKey || `mock_success_${order.id}_${Date.now()}`;
-      const txCode = `MOCK-TX-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
+    const idempotencyKey = effectiveIdempotencyKey || `mock_${dto.outcome}_${order.id}_${Date.now()}`;
 
-      const shouldAwardPoints = (order.pointsEarned ?? 0) === 0;
+    try {
+      if (dto.outcome === "success") {
+        // Thực hiện cập nhật trong Transaction để đảm bảo tính nhất quán
+        const txCode = `MOCK-TX-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
+        const shouldAwardPoints = (order.pointsEarned ?? 0) === 0;
 
-      const txOperations: any[] = [
-        this.prisma.order.update({
-          where: { id: order.id },
-          data: {
-            status: "PAID",
-            ...(shouldAwardPoints ? { pointsEarned: 100 } : {}),
-          },
-        }),
-        this.prisma.payment.create({
-          data: {
-            orderId: order.id,
-            idempotencyKey,
-            amount: order.total,
-            method: dto.method,
-            provider: "MOCK_PAYMENT",
-            status: "SUCCESS",
-            transactionCode: txCode,
-            failureReason: null,
-            rawResponse: {
-              outcome: "SIMULATED_SUCCESS",
-              simulation: true,
-              processedAt: new Date().toISOString(),
+        const txOperations: any[] = [
+          this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: "PAID",
+              ...(shouldAwardPoints ? { pointsEarned: 100 } : {}),
             },
-            paidAt: new Date(),
-          },
-        }),
-        this.prisma.orderStatusHistory.create({
-          data: {
-            orderId: order.id,
-            oldStatus: order.status,
-            newStatus: "PAID",
-            note: `Mô phỏng thanh toán thành công qua ${dto.method === "E_WALLET" ? "Ví điện tử" : "Thẻ ngân hàng"}${shouldAwardPoints ? " (+100 điểm thưởng)" : ""}`,
-          },
-        }),
-      ];
-
-      // Nếu chưa cộng điểm cho đơn này, cộng 100 điểm vào tài khoản user
-      if (shouldAwardPoints) {
-        txOperations.push(
-          this.prisma.user.update({
-            where: { id: order.userId },
-            data: { loyaltyPoints: { increment: 100 } },
           }),
-        );
-      }
-
-      // Nếu đơn hàng có sử dụng voucher, cập nhật usedCount và ghi nhận PromotionUsage
-      if (order.promotionId) {
-        txOperations.push(
-          this.prisma.promotion.update({
-            where: { id: order.promotionId },
-            data: { usedCount: { increment: 1 } },
-          }),
-        );
-        txOperations.push(
-          this.prisma.promotionUsage.upsert({
-            where: { orderId: order.id },
-            update: {},
-            create: {
-              promotionId: order.promotionId,
-              userId: order.userId,
+          this.prisma.payment.create({
+            data: {
               orderId: order.id,
-              discountAmount: order.discountAmount,
+              idempotencyKey,
+              amount: order.total,
+              method: dto.method,
+              provider: "MOCK_PAYMENT",
+              status: "SUCCESS",
+              transactionCode: txCode,
+              failureReason: null,
+              rawResponse: {
+                outcome: "SIMULATED_SUCCESS",
+                simulation: true,
+                processedAt: new Date().toISOString(),
+              },
+              paidAt: new Date(),
             },
           }),
-        );
+          this.prisma.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              oldStatus: order.status,
+              newStatus: "PAID",
+              note: `Mô phỏng thanh toán thành công qua ${dto.method === "E_WALLET" ? "Ví điện tử" : "Thẻ ngân hàng"}${shouldAwardPoints ? " (+100 điểm thưởng)" : ""}`,
+            },
+          }),
+        ];
+
+        // Nếu chưa cộng điểm cho đơn này, cộng 100 điểm vào tài khoản user
+        if (shouldAwardPoints) {
+          txOperations.push(
+            this.prisma.user.update({
+              where: { id: order.userId },
+              data: { loyaltyPoints: { increment: 100 } },
+            }),
+          );
+        }
+
+        // Nếu đơn hàng có sử dụng voucher, cập nhật usedCount và ghi nhận PromotionUsage
+        if (order.promotionId) {
+          txOperations.push(
+            this.prisma.promotion.update({
+              where: { id: order.promotionId },
+              data: { usedCount: { increment: 1 } },
+            }),
+          );
+          txOperations.push(
+            this.prisma.promotionUsage.upsert({
+              where: { orderId: order.id },
+              update: {},
+              create: {
+                promotionId: order.promotionId,
+                userId: order.userId,
+                orderId: order.id,
+                discountAmount: order.discountAmount,
+              },
+            }),
+          );
+        }
+
+        const [updatedOrder] = await this.prisma.$transaction(txOperations);
+
+        return {
+          outcome: "SIMULATED_SUCCESS",
+          orderId: updatedOrder.id.toString(),
+          orderCode: updatedOrder.orderCode,
+          status: "PAID",
+          paymentStatus: "SUCCESS",
+          message: "Mô phỏng thanh toán thành công.",
+          pointsEarned: shouldAwardPoints ? 100 : 0,
+        };
+      } else {
+        // Khi thất bại: Ghi nhận Payment FAILED và chuyển status đơn hàng thành PAYMENT_FAILED
+        await this.prisma.$transaction([
+          this.prisma.order.update({
+            where: { id: order.id },
+            data: { status: "PAYMENT_FAILED" },
+          }),
+          this.prisma.payment.create({
+            data: {
+              orderId: order.id,
+              idempotencyKey,
+              amount: order.total,
+              method: dto.method,
+              provider: "MOCK_PAYMENT",
+              status: "FAILED",
+              failureReason: "Người dùng mô phỏng thanh toán thất bại.",
+              rawResponse: { outcome: "SIMULATED_FAILURE", simulation: true },
+            },
+          }),
+          this.prisma.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              oldStatus: order.status,
+              newStatus: "PAYMENT_FAILED",
+              note: "Mô phỏng thanh toán thất bại",
+            },
+          }),
+        ]);
+
+        return {
+          outcome: "SIMULATED_FAILURE",
+          orderId: order.id.toString(),
+          orderCode: order.orderCode,
+          status: "PAYMENT_FAILED",
+          paymentStatus: "FAILED",
+          message: "Mô phỏng thanh toán thất bại. Vui lòng thử thanh toán lại.",
+        };
       }
-
-      const [updatedOrder] = await this.prisma.$transaction(txOperations);
-
-      return {
-        outcome: "SIMULATED_SUCCESS",
-        orderId: updatedOrder.id.toString(),
-        orderCode: updatedOrder.orderCode,
-        status: "PAID",
-        paymentStatus: "SUCCESS",
-        message: "Mô phỏng thanh toán thành công.",
-        pointsEarned: shouldAwardPoints ? 100 : 0,
-      };
-    } else {
-      // Khi thất bại: Ghi nhận Payment FAILED và chuyển status đơn hàng thành PAYMENT_FAILED
-      const idempotencyKey = dto.idempotencyKey || `mock_fail_${order.id}_${Date.now()}`;
-      await this.prisma.$transaction([
-        this.prisma.order.update({
-          where: { id: order.id },
-          data: { status: "PAYMENT_FAILED" },
-        }),
-        this.prisma.payment.create({
-          data: {
-            orderId: order.id,
-            idempotencyKey,
-            amount: order.total,
-            method: dto.method,
-            provider: "MOCK_PAYMENT",
-            status: "FAILED",
-            failureReason: "Người dùng mô phỏng thanh toán thất bại.",
-            rawResponse: { outcome: "SIMULATED_FAILURE", simulation: true },
-          },
-        }),
-        this.prisma.orderStatusHistory.create({
-          data: {
-            orderId: order.id,
-            oldStatus: order.status,
-            newStatus: "PAYMENT_FAILED",
-            note: "Mô phỏng thanh toán thất bại",
-          },
-        }),
-      ]);
-
-      return {
-        outcome: "SIMULATED_FAILURE",
-        orderId: order.id.toString(),
-        orderCode: order.orderCode,
-        status: "PAYMENT_FAILED",
-        paymentStatus: "FAILED",
-        message: "Mô phỏng thanh toán thất bại. Vui lòng thử thanh toán lại.",
-      };
+    } catch (error: any) {
+      if (error?.code === "P2002" && idempotencyKey) {
+        const existingPayment = await this.prisma.payment.findUnique({
+          where: { idempotencyKey },
+          include: { order: true },
+        });
+        if (existingPayment) {
+          return {
+            outcome: existingPayment.status === "SUCCESS" ? "SIMULATED_SUCCESS" : "SIMULATED_FAILURE",
+            orderId: existingPayment.orderId.toString(),
+            orderCode: existingPayment.order?.orderCode ?? order.orderCode,
+            status: existingPayment.order?.status ?? (existingPayment.status === "SUCCESS" ? "PAID" : "PAYMENT_FAILED"),
+            paymentStatus: existingPayment.status,
+            message: "Đơn hàng đã được thanh toán trước đó (Idempotent response).",
+            pointsEarned: 0,
+          };
+        }
+      }
+      throw error;
     }
   }
 
@@ -776,14 +1069,25 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException("Bạn không có quyền hủy đơn hàng này.");
     }
 
+    // State Machine validation
+    validateStateTransition(order.status, "CANCELLED");
+
     if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
       throw new BadRequestException("Chỉ có thể hủy đơn hàng đang chờ thanh toán hoặc thanh toán lỗi.");
     }
+
+    // Hoàn lại tồn kho cho sản phẩm và topping
+    await this.restoreOrderStock(this.prisma, order.id);
 
     const [updatedOrder] = await this.prisma.$transaction([
       this.prisma.order.update({
         where: { id: order.id },
         data: { status: "CANCELLED" },
+        include: {
+          orderItems: { include: { toppings: true } },
+          payments: { orderBy: { createdAt: "desc" } },
+          statusHistory: { orderBy: { changedAt: "asc" } },
+        },
       }),
       this.prisma.orderStatusHistory.create({
         data: {

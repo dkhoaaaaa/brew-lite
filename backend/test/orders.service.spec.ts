@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
-import { OrdersService } from "../src/modules/orders/orders.service.js";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
+import {
+  OrdersService,
+  validateStateTransition,
+} from "../src/modules/orders/orders.service.js";
 import type { CreateOrderDto } from "../src/modules/orders/dto/create-order.dto.js";
 
 const money = (value: number) => ({ toNumber: () => value });
@@ -23,7 +31,19 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     },
     product: {
       findMany: vi.fn()
-        .mockResolvedValue([{ id: 1n, name: "Cà phê sữa", price: money(35000) }]),
+        .mockResolvedValue([{ id: 1n, name: "Cà phê sữa", price: money(35000), stock: 10, version: 0 }]),
+      update: vi.fn().mockResolvedValue({ id: 1n }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    topping: {
+      findMany: vi.fn().mockResolvedValue([
+        { id: 1n, name: "Trân châu", price: money(5000), stock: 20, version: 0 },
+      ]),
+      update: vi.fn().mockResolvedValue({ id: 1n }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    orderItem: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     productSize: {
       findMany: vi.fn().mockResolvedValue([
@@ -32,7 +52,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     },
     productTopping: {
       findMany: vi.fn().mockResolvedValue([
-        { productId: 1n, topping: { id: 1n, name: "Trân châu", price: money(5000) } },
+        { productId: 1n, topping: { id: 1n, name: "Trân châu", price: money(5000), stock: 20, version: 0 } },
       ]),
     },
     order: {
@@ -79,6 +99,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
       delete: vi.fn().mockResolvedValue({ id: 10n }),
     },
     payment: {
+      findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: 1n }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
@@ -705,5 +726,364 @@ describe("OrdersService.loyaltyAndVoucherIntegration", () => {
     await expect(service.applyVoucher(10n, 1n, "BLV200-OTHER")).rejects.toThrow(
       "Mã khuyến mại này không thuộc về tài khoản của bạn.",
     );
+  });
+});
+
+describe("Task 10.3 - Concurrent Stock Control with Optimistic Locking", () => {
+  it("từ chối tạo đơn khi sản phẩm không đủ tồn kho (stock < quantity)", async () => {
+    const prisma = buildPrisma({
+      product: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 1n, name: "Cà phê sữa", price: money(35000), stock: 2, version: 0 },
+        ]),
+        updateMany: vi.fn(),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    const dto: CreateOrderDto = {
+      items: [
+        { productId: "1", productSizeId: "2", quantity: 5 }, // Yêu cầu 5 nhưng kho chỉ còn 2
+      ],
+    };
+
+    await expect(service.create(1n, dto)).rejects.toThrow(
+      'Sản phẩm "Cà phê sữa" không đủ số lượng tồn kho (chỉ còn 2, yêu cầu 5).',
+    );
+  });
+
+  it("trừ tồn kho và tăng version của sản phẩm bằng Optimistic Locking khi tạo đơn thành công", async () => {
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = buildPrisma({
+      product: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 1n, name: "Cà phê sữa", price: money(35000), stock: 10, version: 3 },
+        ]),
+        updateMany: updateManyMock,
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    const dto: CreateOrderDto = {
+      items: [
+        { productId: "1", productSizeId: "2", quantity: 3 },
+      ],
+    };
+
+    const order = await service.create(1n, dto);
+    expect(order.status).toBe("PENDING");
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 1n,
+        version: 3,
+        stock: { gte: 3 },
+      },
+      data: {
+        stock: { decrement: 3 },
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it("ném ConflictException khi xung đột version (Optimistic Lock conflict)", async () => {
+    const prisma = buildPrisma({
+      product: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 1n, name: "Cà phê sữa", price: money(35000), stock: 10, version: 1 },
+        ]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }), // Giả lập count = 0 do version đã bị thay đổi
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    const dto: CreateOrderDto = {
+      items: [
+        { productId: "1", productSizeId: "2", quantity: 1 },
+      ],
+    };
+
+    await expect(service.create(1n, dto)).rejects.toThrow(ConflictException);
+  });
+
+  it("mô phỏng 2 request cạnh tranh 1 món tồn kho duy nhất (concurrency race condition: 1 thành công, 1 thất bại)", async () => {
+    let currentStock = 1;
+    let currentVersion = 0;
+
+    const prisma = buildPrisma({
+      product: {
+        findMany: vi.fn().mockImplementation(async () => [
+          { id: 1n, name: "Cà phê sữa", price: money(35000), stock: currentStock, version: currentVersion },
+        ]),
+        updateMany: vi.fn().mockImplementation(async ({ where }) => {
+          if (where.version === currentVersion && currentStock >= where.stock.gte) {
+            currentStock -= where.stock.gte;
+            currentVersion += 1;
+            return { count: 1 };
+          }
+          return { count: 0 };
+        }),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    const dto: CreateOrderDto = {
+      items: [{ productId: "1", productSizeId: "2", quantity: 1 }],
+    };
+
+    // Request 1 thành công
+    const order1 = await service.create(1n, dto);
+    expect(order1.status).toBe("PENDING");
+    expect(currentStock).toBe(0);
+
+    // Request 2 thất bại do stock = 0
+    await expect(service.create(2n, dto)).rejects.toThrow();
+  });
+
+  it("hoàn lại số lượng tồn kho khi người dùng hủy đơn hàng (cancelOrder)", async () => {
+    const productUpdateMock = vi.fn().mockResolvedValue({ id: 1n });
+    const prisma = buildPrisma({
+      order: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10n,
+          userId: 1n,
+          status: "PENDING",
+        }),
+        update: vi.fn().mockResolvedValue({
+          id: 10n,
+          orderCode: "BL-CANCEL",
+          status: "CANCELLED",
+          subtotal: money(50000),
+          total: money(50000),
+        }),
+      },
+      orderItem: {
+        findMany: vi.fn().mockResolvedValue([
+          { productId: 1n, quantity: 2, toppings: [{ toppingId: 5n, quantity: 2 }] },
+        ]),
+      },
+      product: {
+        update: productUpdateMock,
+      },
+      topping: {
+        update: vi.fn().mockResolvedValue({ id: 5n }),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    const result = await service.cancelOrder(10n, 1n);
+    expect(result.status).toBe("CANCELLED");
+    expect(productUpdateMock).toHaveBeenCalledWith({
+      where: { id: 1n },
+      data: {
+        stock: { increment: 2 },
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it("hoàn lại số lượng tồn kho khi đơn PENDING hết hạn (cleanupExpiredOrders)", async () => {
+    const productUpdateMock = vi.fn().mockResolvedValue({ id: 1n });
+    const now = new Date();
+    const past = new Date(now.getTime() - 150_000);
+
+    const prisma = buildPrisma({
+      order: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 99n, status: "PENDING", expiresAt: past },
+        ]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      orderItem: {
+        findMany: vi.fn().mockResolvedValue([
+          { productId: 1n, quantity: 3, toppings: [] },
+        ]),
+      },
+      product: {
+        update: productUpdateMock,
+      },
+      payment: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    await service.cleanupExpiredOrders();
+    expect(productUpdateMock).toHaveBeenCalledWith({
+      where: { id: 1n },
+      data: {
+        stock: { increment: 3 },
+        version: { increment: 1 },
+      },
+    });
+    expect(prisma.order.deleteMany).toHaveBeenCalled();
+  });
+});
+
+describe("Task 10.2 - Idempotent Order Creation & Payment", () => {
+  it("trả về đơn hàng cũ khi gọi create với cùng Idempotency-Key", async () => {
+    const existingOrder = {
+      id: 88n,
+      orderCode: "BL-IDEMPOTENT-ORDER",
+      status: "PENDING",
+      subtotal: money(40000),
+      discountAmount: money(0),
+      total: money(40000),
+      pointsEarned: 0,
+      orderItems: [],
+      payments: [],
+      statusHistory: [],
+    };
+
+    const prisma = buildPrisma({
+      payment: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 1n,
+          idempotencyKey: "KEY-12345",
+          order: existingOrder,
+        }),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    const dto: CreateOrderDto = {
+      items: [{ productId: "1", productSizeId: "2", quantity: 1 }],
+      idempotencyKey: "KEY-12345",
+    };
+
+    const result = await service.create(1n, dto, "KEY-12345");
+    expect(result.id).toBe("88");
+    expect(result.orderCode).toBe("BL-IDEMPOTENT-ORDER");
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it("trả về kết quả thành công mà không tạo thêm payment khi gửi lại cùng Idempotency-Key trong mock payment", async () => {
+    const existingPayment = {
+      id: 101n,
+      orderId: 10n,
+      idempotencyKey: "PAY-IDEMP-999",
+      status: "SUCCESS",
+      order: {
+        id: 10n,
+        orderCode: "BL-PAID-ALREADY",
+        status: "PAID",
+      },
+    };
+
+    const prisma = buildPrisma({
+      order: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10n,
+          userId: 1n,
+          orderCode: "BL-PAID-ALREADY",
+          status: "PAID",
+        }),
+      },
+      payment: {
+        findUnique: vi.fn().mockResolvedValue(existingPayment),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    const res = await service.processMockPayment(10n, 1n, {
+      method: "E_WALLET",
+      outcome: "success",
+      idempotencyKey: "PAY-IDEMP-999",
+    }, "PAY-IDEMP-999");
+
+    expect(res.outcome).toBe("SIMULATED_SUCCESS");
+    expect(res.status).toBe("PAID");
+    expect(res.message).toContain("Idempotent");
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it("xử lý an toàn khi xảy ra lỗi P2002 (unique constraint race condition trên Idempotency-Key)", async () => {
+    const prisma = buildPrisma({
+      order: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10n,
+          userId: 1n,
+          orderCode: "BL-RACE-P2002",
+          status: "PENDING",
+          total: money(50000),
+          pointsEarned: 0,
+        }),
+        update: vi.fn().mockResolvedValue({
+          id: 10n,
+          orderCode: "BL-RACE-P2002",
+          status: "PAID",
+          total: money(50000),
+        }),
+      },
+      payment: {
+        create: vi.fn().mockResolvedValue({ id: 1n }),
+        findUnique: vi.fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({
+            id: 202n,
+            orderId: 10n,
+            idempotencyKey: "RACE-KEY",
+            status: "SUCCESS",
+            order: { id: 10n, orderCode: "BL-RACE-P2002", status: "PAID" },
+          }),
+      },
+      $transaction: vi.fn().mockRejectedValue({ code: "P2002" }),
+    });
+    const service = new OrdersService(prisma as never);
+
+    const result = await service.processMockPayment(10n, 1n, {
+      method: "BANK_CARD",
+      outcome: "success",
+      idempotencyKey: "RACE-KEY",
+    });
+
+    expect(result.outcome).toBe("SIMULATED_SUCCESS");
+    expect(result.status).toBe("PAID");
+    expect(result.message).toContain("Idempotent");
+  });
+});
+
+describe("Task 10.1 - State Machine Validation", () => {
+  it("chặn chuyển trạng thái từ PENDING trực tiếp sang READY hoặc COMPLETED", () => {
+    expect(() => validateStateTransition("PENDING", "READY")).toThrow(BadRequestException);
+    expect(() => validateStateTransition("PENDING", "COMPLETED")).toThrow(BadRequestException);
+  });
+
+  it("chặn chuyển ngược từ COMPLETED về PAID, PREPARING hoặc PENDING", () => {
+    expect(() => validateStateTransition("COMPLETED", "PAID")).toThrow(BadRequestException);
+    expect(() => validateStateTransition("COMPLETED", "PREPARING")).toThrow(BadRequestException);
+    expect(() => validateStateTransition("COMPLETED", "PENDING")).toThrow(BadRequestException);
+  });
+
+  it("chặn hủy đơn khi đơn đã PAID hoặc COMPLETED", async () => {
+    const prisma = buildPrisma({
+      order: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10n,
+          userId: 1n,
+          status: "PAID",
+        }),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    await expect(service.cancelOrder(10n, 1n)).rejects.toThrow(BadRequestException);
+  });
+
+  it("chặn thanh toán khi đơn đã CANCELLED hoặc COMPLETED", async () => {
+    const prisma = buildPrisma({
+      order: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10n,
+          userId: 1n,
+          status: "CANCELLED",
+        }),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    await expect(service.processMockPayment(10n, 1n, {
+      method: "E_WALLET",
+      outcome: "success",
+    })).rejects.toThrow(BadRequestException);
   });
 });

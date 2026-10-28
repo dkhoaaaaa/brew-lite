@@ -40,10 +40,12 @@ export class OrdersController {
   create(
     @Headers("authorization") authHeader: string | undefined,
     @Headers("x-user-id") userIdHeader: string | undefined,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
     @Body() dto: CreateOrderDto,
   ) {
     const userId = this.getUserId(authHeader, userIdHeader);
-    return this.ordersService.create(userId, dto);
+    const key = idempotencyKey || dto.idempotencyKey;
+    return this.ordersService.create(userId, dto, key);
   }
 
   @Get("my")
@@ -70,11 +72,12 @@ export class OrdersController {
   processMockPayment(
     @Headers("authorization") authHeader: string | undefined,
     @Headers("x-user-id") userIdHeader: string | undefined,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
     @Param("id") id: string,
     @Body() dto: MockPaymentDto,
   ) {
     const userId = this.getUserId(authHeader, userIdHeader);
-    return this.ordersService.processMockPayment(BigInt(id), userId, dto);
+    return this.ordersService.processMockPayment(BigInt(id), userId, dto, idempotencyKey);
   }
 
   @Post(":id/apply-voucher")
