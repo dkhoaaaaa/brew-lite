@@ -153,7 +153,7 @@ function CartContent() {
         </p>
         {storageError && <p className="payment-result payment-result--failure" role="alert">{storageError}</p>}
         <section className="state-panel">
-          <h1>Giỏ hàng đang trống.</h1>
+          <h1>Giỏ hàng đang trống</h1>
           <p>Chọn một món từ menu để bắt đầu.</p>
           <Link className="button button--dark" href="/menu">Tiếp tục mua hàng</Link>
         </section>

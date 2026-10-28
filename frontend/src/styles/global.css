@@ -33,6 +33,10 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  /* Tối ưu hóa hiển thị văn bản, tự động gom dấu tiếng Việt chuẩn xác */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,
@@ -967,7 +971,6 @@ input {
   flex-wrap: wrap;
   gap: 10px;
 }
-
 
 @media (max-width: 900px) {
   .product-grid {
