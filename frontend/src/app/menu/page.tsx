@@ -18,54 +18,30 @@ const CATEGORY_TABS: { id: CategoryFilter; label: string }[] = [
 
 const ITEMS_PER_PAGE = 8;
 
+/**
+ * Lọc thuần túy theo Category (từ CSDL), tuyệt đối không phụ thuộc tên hay mô tả sản phẩm
+ */
 function matchCategory(product: any, category: CategoryFilter): boolean {
   if (category === "ALL") return true;
 
+  const catName = (product.categoryName ?? "").trim().toLowerCase();
   const catId = product.categoryId ? String(product.categoryId) : "";
-  const catName = (product.categoryName ?? "").toLowerCase().trim();
-  const text = `${product.name} ${product.description ?? ""}`.toLowerCase();
 
   switch (category) {
     case "COFFEE":
-      return (
-        catId === "1" ||
-        catName.includes("cà phê") ||
-        catName.includes("coffee") ||
-        text.includes("cà phê") ||
-        text.includes("espresso") ||
-        text.includes("americano") ||
-        text.includes("latte") ||
-        text.includes("cappuccino") ||
-        text.includes("bạc xỉu") ||
-        text.includes("cold brew")
-      );
+      // Khớp theo categoryId = 1 hoặc tên danh mục là 'Cà phê'
+      return catId === "1" || catName === "cà phê" || catName === "coffee";
 
     case "TEA":
-      return (
-        catId === "7" ||
-        catName.includes("trà") ||
-        catName.includes("tea") ||
-        text.includes("trà") ||
-        text.includes("matcha") ||
-        text.includes("ô long") ||
-        text.includes("oolong")
-      );
+      // Khớp theo categoryId = 7 hoặc tên danh mục là 'Trà'
+      return catId === "7" || catName === "trà" || catName === "tea";
 
     case "CAKE":
-      return (
-        catId === "8" ||
-        catName.includes("bánh") ||
-        catName.includes("cake") ||
-        catName.includes("dessert") ||
-        text.includes("bánh") ||
-        text.includes("croissant") ||
-        text.includes("cookie") ||
-        text.includes("mousse") ||
-        text.includes("tiramisu")
-      );
+      // Khớp theo categoryId = 8 hoặc tên danh mục là 'Bánh'
+      return catId === "8" || catName === "bánh" || catName === "cake" || catName === "dessert";
 
     default:
-      return true;
+      return false;
   }
 }
 
@@ -78,28 +54,28 @@ function MenuContent() {
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
 
-// Trạng thái phân trang và bộ lọc
-const [currentPage, setCurrentPage] = useState<number>(1);
-const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>(() => {
-  if (categoryParam) {
-    const upper = categoryParam.toUpperCase();
-    if (upper === "COFFEE" || upper === "TEA" || upper === "CAKE") {
-      return upper as CategoryFilter;
+  // Trạng thái phân trang và bộ lọc
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>(() => {
+    if (categoryParam) {
+      const upper = categoryParam.toUpperCase();
+      if (upper === "COFFEE" || upper === "TEA" || upper === "CAKE") {
+        return upper as CategoryFilter;
+      }
     }
-  }
-  return "ALL";
-});
-const [searchTerm, setSearchTerm] = useState<string>("");
+    return "ALL";
+  });
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
-// Đồng bộ khi URL param thay đổi
-useEffect(() => {
-  if (categoryParam) {
-    const upper = categoryParam.toUpperCase();
-    if (upper === "COFFEE" || upper === "TEA" || upper === "CAKE") {
-      setSelectedCategory(upper as CategoryFilter);
+  // Đồng bộ khi URL param thay đổi
+  useEffect(() => {
+    if (categoryParam) {
+      const upper = categoryParam.toUpperCase();
+      if (upper === "COFFEE" || upper === "TEA" || upper === "CAKE") {
+        setSelectedCategory(upper as CategoryFilter);
+      }
     }
-  }
-}, [categoryParam]);
+  }, [categoryParam]);
 
   function retry(): void {
     setLoading(true);
@@ -119,7 +95,7 @@ useEffect(() => {
       })
       .then(async (json) => {
         if (!active) return;
-        
+
         let allItems: any[] = [];
 
         if (Array.isArray(json)) {
@@ -143,7 +119,6 @@ useEffect(() => {
           }
         }
 
-        // Chuẩn hóa hình ảnh trỏ về backend port 3001
         const normalizedProducts = allItems.map((p: any) => ({
           ...p,
           categoryId: p.categoryId ?? null,
@@ -169,12 +144,12 @@ useEffect(() => {
     };
   }, [retryCount]);
 
-  // Tự động về trang 1 khi lọc hoặc tìm kiếm
+  // Đưa về trang 1 khi thay đổi từ khóa hoặc danh mục
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, selectedCategory]);
 
-  // Lọc sản phẩm
+  // Lọc sản phẩm: Danh mục lọc theo category của CSDL; từ khóa chỉ áp dụng khi người dùng gõ vào ô tìm kiếm
   const filteredProducts = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return products.filter((product) => {
@@ -185,7 +160,7 @@ useEffect(() => {
     });
   }, [products, selectedCategory, searchTerm]);
 
-  // Phân trang 8 món / trang
+  // Phân trang 8 sản phẩm / trang
   const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
   const paginatedProducts = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -206,24 +181,9 @@ useEffect(() => {
           </p>
         </header>
 
-        {/* Thanh tìm kiếm & Tabs lọc danh mục */}
+        {/* Thanh tìm kiếm & Tabs danh mục */}
         <section className="menu-toolbar" aria-label="Bộ lọc và tìm kiếm món">
           <div className="menu-search-box">
-            <svg
-              className="menu-search-icon"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
             <input
               type="text"
               className="menu-search-input"
@@ -269,51 +229,37 @@ useEffect(() => {
             <span>
               Hiển thị tổng số <strong>{filteredProducts.length}</strong> món (Trang {currentPage} / {totalPages}, mỗi trang 8 món)
             </span>
-            {(selectedCategory !== "ALL" || searchTerm) && (
-              <button
-                type="button"
-                className="menu-reset-btn"
-                onClick={() => {
-                  setSelectedCategory("ALL");
-                  setSearchTerm("");
-                }}
-              >
-                Đặt lại bộ lọc
-              </button>
-            )}
           </div>
         )}
 
-        {/* Loading skeleton */}
+        {/* Trạng thái Loading */}
         {loading && <ProductSkeleton />}
 
-        {/* Báo lỗi */}
+        {/* Trạng thái Lỗi */}
         {error && (
           <div className="menu-state-card" role="alert">
-            <p className="lp-eyebrow">Hệ thống</p>
-            <h2>Không thể tải danh sách thực đơn</h2>
-            <p>{error}</p>
+            <h2 className="text-xl font-bold mb-2">Không thể tải danh sách thực đơn</h2>
+            <p className="text-sm text-stone-600 mb-6">{error}</p>
             <button className="lp-hero__cta" onClick={retry} type="button">
               Thử lại
             </button>
           </div>
         )}
 
-        {/* Không có kết quả */}
+        {/* Trạng thái Không có kết quả */}
         {!loading && !error && filteredProducts.length === 0 && (
-          <div className="menu-state-card">
-            <p className="lp-eyebrow">Kết quả tìm kiếm</p>
-            <h2>Không tìm thấy sản phẩm phù hợp</h2>
-            <p>Vui lòng thử chọn danh mục khác hoặc xóa từ khóa tìm kiếm.</p>
+          <div className="menu-state-card text-center py-12">
+            <h2 className="text-xl font-bold mb-2">Không tìm thấy sản phẩm phù hợp</h2>
+            <p className="text-sm text-stone-600 mb-6">Vui lòng thử danh mục hoặc từ khóa khác.</p>
             <button
               type="button"
-              className="lp-hero__cta"
               onClick={() => {
                 setSelectedCategory("ALL");
                 setSearchTerm("");
               }}
+              className="px-5 py-2.5 bg-amber-800 hover:bg-amber-900 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer shadow-xs"
             >
-              Xem tất cả món
+              Xóa bộ lọc
             </button>
           </div>
         )}
@@ -327,31 +273,31 @@ useEffect(() => {
           </section>
         )}
 
-        {/* Nút phân trang */}
+        {/* Thanh chuyển trang truyền thống */}
         {!loading && !error && totalPages > 1 && (
-          <nav className="lp-pagination" aria-label="Điều hướng trang">
+          <div className="flex justify-center items-center gap-4 mt-8 pb-12">
             <button
               type="button"
               onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
               disabled={currentPage <= 1}
-              className="lp-pagination__btn"
+              className="px-4 py-2 bg-amber-800 text-white rounded-lg disabled:opacity-40 hover:bg-amber-900 transition cursor-pointer"
             >
-              ← Trang trước
+              Trang trước
             </button>
 
-            <span className="lp-pagination__info">
-              Trang <strong>{currentPage}</strong> / {totalPages}
+            <span className="font-medium text-gray-700">
+              Trang {currentPage} / {totalPages}
             </span>
 
             <button
               type="button"
               onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
               disabled={currentPage >= totalPages}
-              className="lp-pagination__btn"
+              className="px-4 py-2 bg-amber-800 text-white rounded-lg disabled:opacity-40 hover:bg-amber-900 transition cursor-pointer"
             >
-              Trang sau →
+              Trang sau
             </button>
-          </nav>
+          </div>
         )}
       </main>
     </div>
@@ -372,4 +318,4 @@ export default function MenuPage() {
       <MenuContent />
     </Suspense>
   );
-} 
+}

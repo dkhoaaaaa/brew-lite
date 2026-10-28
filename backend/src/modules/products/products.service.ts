@@ -36,7 +36,7 @@ export class ProductsService {
     }));
   }
 
-  // Hàm phục vụ Phân trang (Đã bổ sung categoryId và categoryName chuẩn xác)
+  // Hàm phục vụ Phân trang (Đã bổ sung categoryId và categoryName chuẩn xác)//
   async findAllPaginated(page: number = 1, limit: number = 5) {
     const skip = (page - 1) * limit;
 
