@@ -1,5 +1,7 @@
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { NestExpressApplication } from "@nestjs/platform-express";
+import { join } from "path";
 import { AppModule } from "./app.module.js";
 
 async function bootstrap() {
@@ -8,12 +10,16 @@ async function bootstrap() {
     return this.toString();
   };
 
-  const app = await NestFactory.create(AppModule);
+  // Sử dụng NestExpressApplication để bật tính năng phục vụ file tĩnh
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.enableCors({
     origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
     credentials: true,
   });
+
+  // Cấu hình để backend phục vụ thư mục public/image
+  app.useStaticAssets(join(process.cwd(), "public"));
 
   app.useGlobalPipes(
     new ValidationPipe({
