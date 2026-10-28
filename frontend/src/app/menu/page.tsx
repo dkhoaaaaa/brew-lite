@@ -292,21 +292,3 @@ export default function MenuPage() {
     </Suspense>
   );
 }
-
-
-export default function MenuPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="menu-page-wrapper">
-          <main className="lp-inner menu-container">
-            <ProductSkeleton />
-          </main>
-        </div>
-      }
-    >
-      <MenuContent />
-    </Suspense>
-  );
-}
-}
