@@ -121,5 +121,28 @@ describe("LoyaltyService", () => {
     expect(vouchers[0].canApply).toBe(true);
     expect(vouchers[0].isUsed).toBe(false);
   });
+
+  it("chặn âm điểm khi xảy ra xung đột đồng thời trong redeemVoucher (concurrency updateMany count = 0)", async () => {
+    const prisma = buildPrisma({
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: 1n, loyaltyPoints: 200 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }), // Giả lập request khác đã trừ điểm trước đó
+      },
+      promotion: {
+        create: vi.fn(),
+      },
+      $transaction: vi.fn().mockImplementation(async (arg) => {
+        if (Array.isArray(arg)) {
+          return [{ count: 0 }, {}];
+        }
+        return arg;
+      }),
+    });
+    const service = new LoyaltyService(prisma as never);
+
+    await expect(service.redeemVoucher(1n, "TIER_200")).rejects.toThrow(
+      "Bạn chưa đủ điểm để đổi mã khuyến mại này hoặc điểm đã thay đổi.",
+    );
+  });
 });
 

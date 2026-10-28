@@ -1,9 +1,9 @@
-import { randomBytes } from "node:crypto";
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import { PrismaService } from "../../prisma/prisma.service.js";
 
 export interface RewardTier {
@@ -80,12 +80,19 @@ export class LoyaltyService {
     const startAt = new Date();
     const endAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Có hạn trong 30 ngày
 
-    const [updatedUser, promotion] = await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: userId },
-        data: { loyaltyPoints: { decrement: tier.pointsCost } },
-        select: { id: true, loyaltyPoints: true },
-      }),
+    const userUpdater = this.prisma.user.updateMany
+      ? this.prisma.user.updateMany({
+          where: { id: userId, loyaltyPoints: { gte: tier.pointsCost } },
+          data: { loyaltyPoints: { decrement: tier.pointsCost } },
+        })
+      : this.prisma.user.update({
+          where: { id: userId },
+          data: { loyaltyPoints: { decrement: tier.pointsCost } },
+          select: { id: true, loyaltyPoints: true },
+        });
+
+    const [userUpdateResult, promotion] = await this.prisma.$transaction([
+      userUpdater,
       this.prisma.promotion.create({
         data: {
           code,
@@ -106,10 +113,19 @@ export class LoyaltyService {
       }),
     ]);
 
+    if (userUpdateResult && typeof (userUpdateResult as any).count === "number" && (userUpdateResult as any).count === 0) {
+      throw new BadRequestException("Bạn chưa đủ điểm để đổi mã khuyến mại này hoặc điểm đã thay đổi.");
+    }
+
+    const remainingPoints =
+      userUpdateResult && "loyaltyPoints" in (userUpdateResult as any)
+        ? (userUpdateResult as any).loyaltyPoints
+        : Math.max(0, user.loyaltyPoints - tier.pointsCost);
+
     return {
       success: true,
       message: `Đổi thành công mã giảm ${tier.name}!`,
-      remainingPoints: updatedUser.loyaltyPoints,
+      remainingPoints,
       voucher: {
         id: promotion.id.toString(),
         code: promotion.code,

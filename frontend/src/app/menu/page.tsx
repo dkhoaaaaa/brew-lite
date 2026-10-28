@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { ProductCard } from "../../features/products/components/ProductCard";
 import { ProductSkeleton } from "../../features/products/components/ProductSkeleton";
 import "../../styles/landing.css";
@@ -33,7 +34,10 @@ function matchCategory(product: ProductSummary, category: CategoryFilter): boole
   }
 }
 
-export default function MenuPage() {
+function MenuContent() {
+  const searchParams = useSearchParams();
+  const categoryParam = searchParams.get("category");
+
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,8 +45,26 @@ export default function MenuPage() {
 
   // Trạng thái phân trang truyền thống và bộ lọc
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>("ALL");
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>(() => {
+    if (categoryParam) {
+      const upper = categoryParam.toUpperCase();
+      if (upper === "COFFEE" || upper === "TEA" || upper === "CAKE") {
+        return upper as CategoryFilter;
+      }
+    }
+    return "ALL";
+  });
   const [searchTerm, setSearchTerm] = useState<string>("");
+
+  // Đồng bộ khi URL param thay đổi
+  useEffect(() => {
+    if (categoryParam) {
+      const upper = categoryParam.toUpperCase();
+      if (upper === "COFFEE" || upper === "TEA" || upper === "CAKE") {
+        setSelectedCategory(upper as CategoryFilter);
+      }
+    }
+  }, [categoryParam]);
 
   function retry(): void {
     setLoading(true);
@@ -55,7 +77,6 @@ export default function MenuPage() {
     let active = true;
     setLoading(true);
 
-    // Gọi trang đầu tiên để lấy meta tổng số trang
     fetch("http://localhost:3001/products?page=1")
       .then(async (res) => {
         if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
@@ -254,4 +275,38 @@ export default function MenuPage() {
       </main>
     </div>
   );
+}
+
+export default function MenuPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="menu-page-wrapper">
+          <main className="lp-inner menu-container">
+            <ProductSkeleton />
+          </main>
+        </div>
+      }
+    >
+      <MenuContent />
+    </Suspense>
+  );
+}
+
+
+export default function MenuPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="menu-page-wrapper">
+          <main className="lp-inner menu-container">
+            <ProductSkeleton />
+          </main>
+        </div>
+      }
+    >
+      <MenuContent />
+    </Suspense>
+  );
+}
 }

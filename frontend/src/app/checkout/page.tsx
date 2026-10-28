@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Toast } from "../../components/Toast";
 import { useCart } from "../../features/cart/cart-store";
-import { useAuth } from "../../lib/auth";
 import {
   isMockPaymentMethod,
   type MockPaymentMethod,
   type MockPaymentOutcome,
   type MockPaymentResult,
 } from "../../features/payment/mock-payment";
+import { useAuth } from "../../lib/auth";
+import { getMyVouchers, type UserVoucher } from "../../lib/loyalty-api";
+import { formatPrice } from "../../lib/money";
 import {
   applyVoucherToOrder,
   executeMockPayment,
@@ -19,8 +21,6 @@ import {
   removeVoucherFromOrder,
   type CreatedOrderResponse,
 } from "../../lib/orders-api";
-import { getMyVouchers, type UserVoucher } from "../../lib/loyalty-api";
-import { formatPrice } from "../../lib/money";
 
 export default function CheckoutPage() {
   return (
@@ -536,7 +536,6 @@ function CheckoutContent() {
 
           {/* THÔNG BÁO TÍCH ĐIỂM BẮT BUỘC */}
           <div className="mt-4 p-3 bg-[#FAF7F2] border border-[#E7DECE] rounded-xl flex items-center gap-2.5 text-xs text-[#76513B] shadow-2xs">
-            <span className="text-base shrink-0">🪙</span>
             <span className="font-semibold text-[#5C4738]">
               Bạn sẽ nhận được <strong>+100 điểm thành viên</strong> khi thanh toán thành công!
             </span>

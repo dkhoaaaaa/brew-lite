@@ -72,38 +72,36 @@ function HeroSection() {
   );
 }
 
-// ─── 2. CATEGORIES BAR (HORIZONTAL STRIP) ─────────────────────────────────────
+// ─── 2. CATEGORIES BAR (RÚT GỌN 3 DANH MỤC: CÀ PHÊ - TRÀ - BÁNH) ──────────────
 
-const CATEGORY_ITEMS: { id: string; label: string; icon: React.ReactNode }[] = [
+interface CategoryItem {
+  id: string;
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+}
+
+const CATEGORY_ITEMS: CategoryItem[] = [
   {
-    id: "hot-coffee",
-    label: "Cà phê nóng",
+    id: "coffee",
+    label: "Cà phê",
+    href: "/menu?category=COFFEE",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
         <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
-        <line x1="6" y1="1" x2="6" y2="4" strokeLinecap="round" />
-        <line x1="10" y1="1" x2="10" y2="4" strokeLinecap="round" />
-        <line x1="14" y1="1" x2="14" y2="4" strokeLinecap="round" />
+        <line x1="6" y1="1" x2="6" y2="4" />
+        <line x1="10" y1="1" x2="10" y2="4" />
+        <line x1="14" y1="1" x2="14" y2="4" />
       </svg>
     ),
   },
   {
-    id: "cold-coffee",
-    label: "Cà phê lạnh",
+    id: "tea",
+    label: "Trà",
+    href: "/menu?category=TEA",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-        <path d="M5 8h14l-1.5 12a2 2 0 0 1-2 1.8H8.5a2 2 0 0 1-2-1.8L5 8z" />
-        <path d="M4 8h16" />
-        <path d="M15 2l-3 6" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    id: "tea-milktea",
-    label: "Trà & Trà sữa",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M6 9l1.2 11.2a2 2 0 0 0 2 1.8h5.6a2 2 0 0 0 2-1.8L18 9H6z" />
         <path d="M5 9h14" />
         <path d="M7 6h10" />
@@ -114,13 +112,15 @@ const CATEGORY_ITEMS: { id: string; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
-    id: "dessert",
-    label: "Bánh & Tráng miệng",
+    id: "cake",
+    label: "Bánh",
+    href: "/menu?category=CAKE",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-        <path d="M3 21h18" />
-        <path d="M5 21V12l7-5 7 5v9" />
-        <path d="M12 7V3" strokeLinecap="round" />
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8" />
+        <path d="M4 16s2-1.5 4-1.5 4 1.5 4 1.5 2-1.5 4-1.5 4 1.5 4 1.5" />
+        <path d="M2 21h20" />
+        <path d="M12 7V4" />
         <circle cx="12" cy="3" r="1" fill="currentColor" />
       </svg>
     ),
@@ -130,18 +130,18 @@ const CATEGORY_ITEMS: { id: string; label: string; icon: React.ReactNode }[] = [
 function CategoriesBar() {
   return (
     <section className="bg-[#EAE1D2] border-b border-[#D8CFC2] py-6 sm:py-7" aria-label="Danh mục sản phẩm nhanh">
-      <div className="max-w-6xl mx-auto px-5 sm:px-8">
-        <div className="flex flex-row items-center justify-center gap-4 sm:gap-10 lg:gap-14 flex-wrap">
+      <div className="max-w-4xl mx-auto px-5 sm:px-8">
+        <div className="flex flex-row items-center justify-center gap-8 sm:gap-16 lg:gap-24">
           {CATEGORY_ITEMS.map((item) => (
             <Link
               key={item.id}
-              href="/menu"
-              className="group flex flex-col items-center gap-2.5 text-[#30251D] p-2 sm:px-4 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/40"
+              href={item.href}
+              className="group flex flex-col items-center gap-2.5 text-[#30251D] p-2 sm:px-6 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/40"
             >
-              <div className="w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-white border border-[#D8CFC2] text-[#76513B] flex items-center justify-center shadow-xs transition-colors duration-200 group-hover:bg-[#38291E] group-hover:text-[#E7DECE] group-hover:border-[#38291E]">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white border border-[#D8CFC2] text-[#76513B] flex items-center justify-center shadow-xs transition-colors duration-200 group-hover:bg-[#38291E] group-hover:text-[#E7DECE] group-hover:border-[#38291E]">
                 {item.icon}
               </div>
-              <span className="text-xs sm:text-[13px] font-bold text-[#30251D] tracking-wide text-center whitespace-nowrap">
+              <span className="text-xs sm:text-[14px] font-bold text-[#30251D] tracking-wide text-center whitespace-nowrap">
                 {item.label}
               </span>
             </Link>
@@ -267,7 +267,6 @@ function ProductShowcaseSection({
             </p>
           )}
           <div className="flex items-center justify-center gap-4 sm:gap-6">
-            {/* Nút sang trái chuyên nghiệp với icon chevron */}
             <button
               type="button"
               className="w-10 h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer"
@@ -285,7 +284,6 @@ function ProductShowcaseSection({
               {title}
             </h2>
 
-            {/* Nút sang phải chuyên nghiệp với icon chevron */}
             <button
               type="button"
               className="w-10 h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer"
@@ -493,7 +491,7 @@ export default function HomePage() {
     };
   }, [retryCount]);
 
-  // Phân loại nhóm Cà phê và nhóm Thức uống khác từ danh sách sản phẩm thực tế
+  // Lọc nhóm Cà phê cho section "OUR SPECIAL COFFEE"
   const isCoffeeItem = (name: string) => {
     const n = name.toLowerCase();
     return (
@@ -510,17 +508,14 @@ export default function HomePage() {
   };
 
   const coffeeProducts = products.filter((p) => isCoffeeItem(p.name));
-  const drinkProducts = products.filter((p) => !isCoffeeItem(p.name));
-
   const finalCoffeeList = coffeeProducts.length > 0 ? coffeeProducts : products.slice(0, 6);
-  const finalDrinkList = drinkProducts.length > 0 ? drinkProducts : products.slice(6, 12);
 
   return (
     <div className="bg-[#F7F5F1] min-h-screen text-[#30251D] font-sans">
       {/* 1. Hero Banner */}
       <HeroSection />
 
-      {/* 2. Categories Bar */}
+      {/* 2. Categories Bar (Cà phê - Trà - Bánh) */}
       <CategoriesBar />
 
       {/* 3. Cà phê nổi bật (OUR SPECIAL COFFEE) */}
@@ -533,20 +528,10 @@ export default function HomePage() {
         onRetry={handleRetry}
       />
 
-      {/* 4. Thức uống được yêu thích (THỨC UỐNG ĐƯỢC YÊU THÍCH) */}
-      <ProductShowcaseSection
-        eyebrowScript="Thanh mát & ngọt ngào"
-        title="THỨC UỐNG ĐƯỢC YÊU THÍCH"
-        products={finalDrinkList}
-        loading={loading}
-        error={error}
-        onRetry={handleRetry}
-      />
-
-      {/* 5. Promotional Coffee Beans Banner */}
+      {/* 4. Promotional Coffee Beans Banner */}
       <PromotionalBanner />
 
-      {/* 6. Footer */}
+      {/* 5. Footer */}
       <SiteFooterV2 />
     </div>
   );
