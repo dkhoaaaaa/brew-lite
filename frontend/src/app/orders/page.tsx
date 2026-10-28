@@ -52,6 +52,26 @@ export default function OrdersPage() {
     };
   }, [isAuthenticated, statusFilter]);
 
+  // Polling tự động làm mới danh sách đơn khi có ít nhất 1 đơn đang trong tiến trình xử lý
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const hasActiveProcessingOrder = orders.some((o) =>
+      ["PAID", "PREPARING", "READY"].includes(o.status),
+    );
+    if (!hasActiveProcessingOrder) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await getMyOrders(statusFilter);
+        setOrders(updated);
+      } catch {
+        // Bỏ qua lỗi polling tạm thời
+      }
+    }, 12_000); // 12 giây một lần
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, orders, statusFilter]);
+
   const handleCancelOrder = async (orderId: string) => {
     if (!window.confirm("Bạn có chắc chắn muốn hủy đơn hàng này?")) {
       return;
@@ -275,6 +295,57 @@ export default function OrdersPage() {
                     </div>
                     <div>{getStatusBadge(order.status)}</div>
                   </div>
+
+                  {/* Tiến trình xử lý thu nhỏ */}
+                  {["PAID", "PREPARING", "READY", "COMPLETED"].includes(order.status) && (
+                    <div className="mb-4 p-3 bg-[#FAF7F2] rounded-xl border border-[#EDE6DC]">
+                      <div className="flex items-center justify-between text-xs font-semibold text-[#76513B] mb-1.5">
+                        <span className="text-[11px] uppercase tracking-wider text-[#8C7E73]">Tiến độ đơn hàng:</span>
+                        <span className="font-bold text-[#38291E]">
+                          {order.status === "PAID"
+                            ? "Đã thanh toán"
+                            : order.status === "PREPARING"
+                            ? "Đang chuẩn bị thức uống"
+                            : order.status === "READY"
+                            ? "Đã sẵn sàng nhận món"
+                            : "Hoàn thành"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5 pt-1">
+                        {[
+                          { key: "PAID", label: "Đã thanh toán" },
+                          { key: "PREPARING", label: "Chuẩn bị" },
+                          { key: "READY", label: "Sẵn sàng" },
+                          { key: "COMPLETED", label: "Hoàn tất" },
+                        ].map((st, i) => {
+                          const orderProg: Record<string, number> = { PAID: 0, PREPARING: 1, READY: 2, COMPLETED: 3 };
+                          const currentProg = orderProg[order.status] ?? -1;
+                          const isPassed = i <= currentProg;
+                          const isCurrent = i === currentProg;
+                          return (
+                            <div key={st.key} className="flex flex-col items-center gap-1 text-center">
+                              <div
+                                className={`w-full h-1.5 rounded-full transition-colors ${
+                                  isPassed ? "bg-[#38291E]" : "bg-[#DED6CB]"
+                                }`}
+                              />
+                              <span
+                                className={`text-[10px] leading-tight ${
+                                  isCurrent
+                                    ? "font-bold text-[#38291E]"
+                                    : isPassed
+                                    ? "font-medium text-[#76513B]"
+                                    : "text-[#A89A8D]"
+                                }`}
+                              >
+                                {st.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Card Items */}
                   <div className="flex flex-col gap-3 mb-5">

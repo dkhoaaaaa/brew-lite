@@ -1,48 +1,33 @@
 "use client";
 
-<<<<<<< HEAD
 import { useEffect, useMemo, useState } from "react";
-=======
-import React, { useEffect, useState, useMemo } from "react";
->>>>>>> a3c30e6c7f7138b277e00f27470bb907a15e548f
 import { ProductCard } from "../../features/products/components/ProductCard";
 import { ProductSkeleton } from "../../features/products/components/ProductSkeleton";
 import "../../styles/landing.css";
 import type { ProductSummary } from "../../types/product";
 
-type CategoryFilter = "ALL" | "COFFEE" | "TEA" | "CAKE" | "TOPPING";
+type CategoryFilter = "ALL" | "COFFEE" | "TEA" | "CAKE";
 
 const CATEGORY_TABS: { id: CategoryFilter; label: string }[] = [
   { id: "ALL", label: "Tất cả" },
   { id: "COFFEE", label: "Cà phê" },
   { id: "TEA", label: "Trà" },
   { id: "CAKE", label: "Bánh" },
-  { id: "TOPPING", label: "Topping" },
 ];
 
 const ITEMS_PER_PAGE = 8;
 
 function matchCategory(product: ProductSummary, category: CategoryFilter): boolean {
   if (category === "ALL") return true;
-  const text = `${product.name} ${product.description ?? ""}`.toLowerCase();
+  const catName = product.categoryName?.trim().toLowerCase() ?? "";
 
   switch (category) {
     case "COFFEE":
-      return (
-        text.includes("cà phê") ||
-        text.includes("cafe") ||
-        text.includes("espresso") ||
-        text.includes("americano") ||
-        text.includes("latte") ||
-        text.includes("cappuccino") ||
-        text.includes("bạc xỉu")
-      );
+      return catName.includes("cà phê") || catName.includes("coffee");
     case "TEA":
-      return text.includes("trà") || text.includes("tea") || text.includes("matcha") || text.includes("ô long");
+      return catName.includes("trà") || catName.includes("tea");
     case "CAKE":
-      return text.includes("bánh") || text.includes("cake") || text.includes("croissant") || text.includes("tiramisu");
-    case "TOPPING":
-      return text.includes("topping") || text.includes("thạch") || text.includes("trân châu");
+      return catName.includes("bánh") || catName.includes("cake") || catName.includes("dessert");
     default:
       return true;
   }
@@ -99,6 +84,8 @@ export default function MenuPage() {
         // Chuẩn hóa đường dẫn hình ảnh trỏ về port 3001
         const normalizedProducts = allItems.map((p: any) => ({
           ...p,
+          categoryId: p.categoryId ?? null,
+          categoryName: p.categoryName ?? p.category?.name ?? null,
           imageUrl: p.imageUrl
             ? p.imageUrl.startsWith("http")
               ? p.imageUrl
@@ -213,9 +200,19 @@ export default function MenuPage() {
 
         {/* Trạng thái Không có kết quả */}
         {!loading && !error && filteredProducts.length === 0 && (
-          <div className="menu-state-card">
-            <h2>Không tìm thấy món phù hợp</h2>
-            <p>Không có sản phẩm nào khớp với lựa chọn của bạn.</p>
+          <div className="menu-state-card text-center py-12">
+            <h2 className="text-xl font-bold mb-2">Không tìm thấy sản phẩm phù hợp</h2>
+            <p className="text-sm text-stone-600 mb-6">Vui lòng thử danh mục hoặc từ khóa khác.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory("ALL");
+                setSearchTerm("");
+              }}
+              className="px-5 py-2.5 bg-amber-800 hover:bg-amber-900 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer shadow-xs"
+            >
+              Xóa bộ lọc
+            </button>
           </div>
         )}
 

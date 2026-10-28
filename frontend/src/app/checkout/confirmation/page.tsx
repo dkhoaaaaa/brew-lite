@@ -197,6 +197,17 @@ function OrderConfirmationContent() {
           </p>
         </header>
 
+        {/* Thông báo tích 100 điểm thưởng thành công */}
+        <div className="mb-6 p-4 rounded-2xl bg-[#FAF7F2] border border-[#E7DECE] flex items-center gap-3.5 shadow-2xs">
+          <div className="w-11 h-11 rounded-full bg-[#EAE1D2] text-[#76513B] flex items-center justify-center text-xl font-bold shrink-0">
+            🪙
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-[#30251D]">+100 điểm thành viên</h3>
+            <p className="text-xs text-[#76513B] mt-0.5">Bạn đã nhận được 100 điểm thưởng từ đơn hàng này.</p>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
           {/* Cột chính: Danh sách món & Tổng tiền */}
           <section className="bg-white rounded-2xl border border-[#E5DFD7] p-6 shadow-xs" aria-labelledby="order-items-heading">

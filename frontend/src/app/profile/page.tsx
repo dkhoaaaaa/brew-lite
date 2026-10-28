@@ -5,6 +5,15 @@ import { useEffect, useState } from "react";
 import { formatErrorMessage } from "../../lib/api-client";
 import { getProfile, updateProfile, useAuth } from "../../lib/auth";
 import { getMyOrders, type CreatedOrderResponse } from "../../lib/orders-api";
+import {
+  getLoyaltyRewards,
+  getMyVouchers,
+  getLoyaltyHistory,
+  redeemVoucher,
+  type RewardTier,
+  type UserVoucher,
+  type LoyaltyHistoryItem,
+} from "../../lib/loyalty-api";
 import { formatPrice } from "../../lib/money";
 
 export default function ProfilePage() {
@@ -20,6 +29,15 @@ export default function ProfilePage() {
   // Danh sách đơn hàng gần đây của tài khoản
   const [recentOrders, setRecentOrders] = useState<CreatedOrderResponse[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+
+  // Trạng thái Loyalty & Voucher
+  const [rewardTiers, setRewardTiers] = useState<RewardTier[]>([]);
+  const [userVouchers, setUserVouchers] = useState<UserVoucher[]>([]);
+  const [loyaltyHistory, setLoyaltyHistory] = useState<LoyaltyHistoryItem[]>([]);
+  const [showRedeemPanel, setShowRedeemPanel] = useState(false);
+  const [redeemingTierId, setRedeemingTierId] = useState<string | null>(null);
+  const [redeemSuccessMsg, setRedeemSuccessMsg] = useState<string | null>(null);
+  const [redeemErrorMsg, setRedeemErrorMsg] = useState<string | null>(null);
 
   // Trạng thái cập nhật thông tin cá nhân
   const [infoLoading, setInfoLoading] = useState(false);
@@ -137,6 +155,32 @@ export default function ProfilePage() {
       active = false;
     };
   }, [isAuthenticated, user?.id]);
+
+  const handleRedeem = async (tier: RewardTier) => {
+    if (loyaltyPoints < tier.pointsCost) {
+      setRedeemErrorMsg("Bạn chưa đủ điểm để đổi mã khuyến mại này.");
+      return;
+    }
+    setRedeemingTierId(tier.id);
+    setRedeemErrorMsg(null);
+    setRedeemSuccessMsg(null);
+    try {
+      const res = await redeemVoucher(tier.id);
+      setLoyaltyPoints(res.remainingPoints);
+      setRedeemSuccessMsg(res.message);
+      // Cập nhật lại danh sách voucher và lịch sử
+      const [updatedVouchers, updatedHistory] = await Promise.all([
+        getMyVouchers(),
+        getLoyaltyHistory(),
+      ]);
+      setUserVouchers(updatedVouchers);
+      setLoyaltyHistory(updatedHistory.slice(0, 10));
+    } catch (err: any) {
+      setRedeemErrorMsg(err.message || "Không thể đổi mã khuyến mại lúc này.");
+    } finally {
+      setRedeemingTierId(null);
+    }
+  };
 
   // Xử lý lưu thông tin cá nhân (Họ tên, SĐT)
   const handleUpdateInfo = async (e: React.FormEvent) => {

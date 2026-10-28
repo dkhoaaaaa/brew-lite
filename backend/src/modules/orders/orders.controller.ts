@@ -77,6 +77,27 @@ export class OrdersController {
     return this.ordersService.processMockPayment(BigInt(id), userId, dto);
   }
 
+  @Post(":id/apply-voucher")
+  applyVoucher(
+    @Headers("authorization") authHeader: string | undefined,
+    @Headers("x-user-id") userIdHeader: string | undefined,
+    @Param("id") id: string,
+    @Body("code") code: string,
+  ) {
+    const userId = this.getUserId(authHeader, userIdHeader);
+    return this.ordersService.applyVoucher(BigInt(id), userId, code);
+  }
+
+  @Post(":id/remove-voucher")
+  removeVoucher(
+    @Headers("authorization") authHeader: string | undefined,
+    @Headers("x-user-id") userIdHeader: string | undefined,
+    @Param("id") id: string,
+  ) {
+    const userId = this.getUserId(authHeader, userIdHeader);
+    return this.ordersService.removeVoucher(BigInt(id), userId);
+  }
+
   @Post(":id/cancel")
   cancelOrder(
     @Headers("authorization") authHeader: string | undefined,

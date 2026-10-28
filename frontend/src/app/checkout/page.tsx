@@ -13,10 +13,13 @@ import {
   type MockPaymentResult,
 } from "../../features/payment/mock-payment";
 import {
+  applyVoucherToOrder,
   executeMockPayment,
   getOrderById,
+  removeVoucherFromOrder,
   type CreatedOrderResponse,
 } from "../../lib/orders-api";
+import { getMyVouchers, type UserVoucher } from "../../lib/loyalty-api";
 import { formatPrice } from "../../lib/money";
 
 export default function CheckoutPage() {
@@ -62,6 +65,52 @@ function CheckoutContent() {
   const [orderSnapshotLoaded, setOrderSnapshotLoaded] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const submissionLock = useRef(false);
+  const [userVouchers, setUserVouchers] = useState<UserVoucher[]>([]);
+  const [selectedVoucherCode, setSelectedVoucherCode] = useState<string>("");
+  const [applyingVoucher, setApplyingVoucher] = useState(false);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      getMyVouchers()
+        .then((list) => setUserVouchers(list.filter((v) => v.canApply)))
+        .catch(() => {});
+    }
+  }, [isAuthenticated]);
+
+  const handleApplyVoucher = async (codeToApply?: string) => {
+    const code = (codeToApply || selectedVoucherCode).trim();
+    if (!code || !createdOrder) return;
+    setApplyingVoucher(true);
+    setVoucherError(null);
+    try {
+      const updated = await applyVoucherToOrder(createdOrder.id, code);
+      setCreatedOrder(updated);
+      window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(updated));
+      setToast({ title: "Áp dụng thành công", message: `Đã áp dụng mã giảm giá ${code}` });
+    } catch (err: any) {
+      setVoucherError(err.message || "Không thể áp dụng mã này.");
+    } finally {
+      setApplyingVoucher(false);
+    }
+  };
+
+  const handleRemoveVoucher = async () => {
+    if (!createdOrder) return;
+    setApplyingVoucher(true);
+    setVoucherError(null);
+    try {
+      const updated = await removeVoucherFromOrder(createdOrder.id);
+      setCreatedOrder(updated);
+      window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(updated));
+      setSelectedVoucherCode("");
+      setToast({ title: "Đã hủy áp dụng", message: "Đã xóa mã giảm giá khỏi đơn hàng." });
+    } catch (err: any) {
+      setVoucherError(err.message || "Không thể hủy mã này.");
+    } finally {
+      setApplyingVoucher(false);
+    }
+  };
 
   // Nếu chưa đăng nhập, tự động chuyển về trang đăng nhập
   useEffect(() => {
@@ -392,19 +441,108 @@ function CheckoutContent() {
           )}
         </section>
 
-        <aside className="checkout-summary">
-          <p className="eyebrow">Tóm tắt giỏ hàng</p>
-          {createdOrder.items.map((item) => (
-            <div className="checkout-summary__line" key={item.id}>
-              <span>{item.quantity} × {item.productName} (Size {item.sizeCode})</span>
-              <strong>{formatPrice(String(item.lineTotal))}</strong>
-            </div>
-          ))}
-          <div className="checkout-summary__total">
-            <span>Tổng cộng</span>
-            <strong>{formatPrice(String(createdOrder.total))}</strong>
+        <aside className="checkout-summary bg-white p-6 rounded-2xl border border-[#DED6CB] shadow-xs">
+          <p className="eyebrow text-xs font-bold uppercase tracking-wider text-[#76513B] mb-3">Tóm tắt đơn hàng</p>
+          <div className="space-y-2 mb-4">
+            {createdOrder.items.map((item) => (
+              <div className="flex justify-between items-start text-xs sm:text-sm text-[#30251D]" key={item.id}>
+                <span>{item.quantity} × {item.productName} (Size {item.sizeCode})</span>
+                <strong className="whitespace-nowrap">{formatPrice(String(item.lineTotal))}</strong>
+              </div>
+            ))}
           </div>
-          <p>Đơn hàng được lưu trên hệ thống. Sau 2 phút nếu không hoàn tất thanh toán, đơn sẽ tự động bị hủy.</p>
+
+          {/* KHỐI MÃ KHUYẾN MẠI */}
+          <div className="my-4 pt-4 border-t border-[#EDE6DC]">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#76513B] mb-2">Mã khuyến mại</p>
+            {createdOrder.promotionId ? (
+              <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                <div>
+                  <span className="font-bold text-emerald-800 block">Đã áp dụng mã giảm giá</span>
+                  <span className="text-emerald-700 font-semibold">Giảm -{formatPrice(String(createdOrder.discountAmount))}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveVoucher}
+                  disabled={processing || applyingVoucher}
+                  className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-md text-xs font-semibold cursor-pointer transition"
+                >
+                  Hủy
+                </button>
+              </div>
+            ) : userVouchers.length > 0 ? (
+              <div className="space-y-2">
+                <select
+                  value={selectedVoucherCode}
+                  onChange={(e) => {
+                    setSelectedVoucherCode(e.target.value);
+                    if (e.target.value) handleApplyVoucher(e.target.value);
+                  }}
+                  disabled={processing || applyingVoucher}
+                  className="w-full text-xs p-2.5 bg-[#FAF7F2] border border-[#DED6CB] rounded-xl font-medium text-[#30251D] cursor-pointer"
+                >
+                  <option value="">-- Chọn mã khuyến mại của bạn --</option>
+                  {userVouchers.map((v) => (
+                    <option key={v.id} value={v.code}>
+                      {v.code} - Giảm {formatPrice(String(v.discountValue))}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nhập mã voucher..."
+                    value={selectedVoucherCode}
+                    onChange={(e) => setSelectedVoucherCode(e.target.value.toUpperCase())}
+                    disabled={processing || applyingVoucher}
+                    className="flex-1 text-xs px-3 py-2 bg-white border border-[#DED6CB] rounded-xl uppercase font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleApplyVoucher()}
+                    disabled={!selectedVoucherCode || processing || applyingVoucher}
+                    className="px-3.5 py-2 bg-[#38291E] hover:bg-[#241A13] text-white text-xs font-bold rounded-xl transition disabled:opacity-40 cursor-pointer shadow-2xs"
+                  >
+                    {applyingVoucher ? "..." : "Áp dụng"}
+                  </button>
+                </div>
+                {voucherError && <p className="text-xs text-rose-600 mt-1">{voucherError}</p>}
+              </div>
+            ) : (
+              <div className="p-3 bg-[#FAF7F2] border border-[#EDE6DC] rounded-xl text-xs text-[#76513B] leading-relaxed">
+                <p>Bạn chưa có mã khuyến mại. Hãy tích điểm để đổi voucher tại mục <Link href="/profile" className="font-bold underline text-[#38291E]">Điểm thành viên</Link>.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Phân rã tính tiền */}
+          <div className="space-y-2 pt-4 border-t border-[#EDE6DC] text-xs sm:text-sm">
+            <div className="flex justify-between text-[#6F6258]">
+              <span>Tạm tính</span>
+              <span>{formatPrice(String(createdOrder.subtotal))}</span>
+            </div>
+            {createdOrder.discountAmount > 0 && (
+              <div className="flex justify-between text-emerald-700 font-semibold">
+                <span>Mã khuyến mại</span>
+                <span>-{formatPrice(String(createdOrder.discountAmount))}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-base sm:text-lg text-[#38291E] pt-2 border-t border-[#EDE6DC]">
+              <span>Tổng thanh toán</span>
+              <span>{formatPrice(String(createdOrder.total))}</span>
+            </div>
+          </div>
+
+          {/* THÔNG BÁO TÍCH ĐIỂM BẮT BUỘC */}
+          <div className="mt-4 p-3 bg-[#FAF7F2] border border-[#E7DECE] rounded-xl flex items-center gap-2.5 text-xs text-[#76513B] shadow-2xs">
+            <span className="text-base shrink-0">🪙</span>
+            <span className="font-semibold text-[#5C4738]">
+              Bạn sẽ nhận được <strong>+100 điểm thành viên</strong> khi thanh toán thành công!
+            </span>
+          </div>
+
+          <p className="mt-4 text-[11px] text-[#8C7E73] leading-relaxed">Đơn hàng được lưu trên hệ thống. Sau 2 phút nếu không hoàn tất thanh toán, đơn sẽ tự động bị hủy.</p>
         </aside>
       </div>
 

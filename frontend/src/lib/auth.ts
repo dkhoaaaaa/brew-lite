@@ -42,7 +42,8 @@ export interface AuthResponse {
 }
 
 // =====================================================================
-// 2. LƯU TRỮ VÀ CACHE TOKEN / USER (LOCALSTORAGE)
+// 2. LƯU TRỮ VÀ CACHE TOKEN / USER (SESSIONSTORAGE)
+// Lưu phiên trong sessionStorage để tự động đăng xuất khi tắt tab/trình duyệt
 // =====================================================================
 const TOKEN_KEY = "brewlite_access_token";
 const USER_KEY = "brewlite_user";
@@ -55,7 +56,7 @@ export function getAccessToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = sessionStorage.getItem(TOKEN_KEY);
   if (token !== cachedToken) {
     cachedToken = token;
   }
@@ -67,7 +68,7 @@ export function setAccessToken(token: string): void {
     return;
   }
   cachedToken = token;
-  localStorage.setItem(TOKEN_KEY, token);
+  sessionStorage.setItem(TOKEN_KEY, token);
 }
 
 export function removeAccessToken(): void {
@@ -75,14 +76,20 @@ export function removeAccessToken(): void {
     return;
   }
   cachedToken = null;
-  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  // Đồng thời dọn dẹp localStorage cũ nếu có
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Ignore
+  }
 }
 
 export function getUser(): StoredUser | null {
   if (typeof window === "undefined") {
     return null;
   }
-  const data = localStorage.getItem(USER_KEY);
+  const data = sessionStorage.getItem(USER_KEY);
   if (data === cachedUserRaw) {
     return cachedUser;
   }
@@ -108,7 +115,7 @@ export function setUser(user: StoredUser): void {
   const str = JSON.stringify(user);
   cachedUserRaw = str;
   cachedUser = user;
-  localStorage.setItem(USER_KEY, str);
+  sessionStorage.setItem(USER_KEY, str);
 }
 
 export function removeUser(): void {
@@ -117,7 +124,13 @@ export function removeUser(): void {
   }
   cachedUserRaw = null;
   cachedUser = null;
-  localStorage.removeItem(USER_KEY);
+  sessionStorage.removeItem(USER_KEY);
+  // Đồng thời dọn dẹp localStorage cũ nếu có
+  try {
+    localStorage.removeItem(USER_KEY);
+  } catch {
+    // Ignore
+  }
 }
 
 export function clearAuth(): void {

@@ -35,6 +35,8 @@ function productBase(record: JsonRecord): ProductSummary {
     description: optionalString(record.description),
     price,
     imageUrl: optionalString(record.imageUrl),
+    categoryId: optionalString(record.categoryId),
+    categoryName: optionalString(record.categoryName),
   };
 }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { login } from "../../lib/auth";
 import { formatErrorMessage } from "../../lib/api-client";
 
@@ -24,27 +24,65 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get("redirect") || "/";
+  const isLoggedOutParam = searchParams.get("loggedOut") === "true";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [loggedOutToast, setLoggedOutToast] = useState(isLoggedOutParam);
+
+  const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reset form sạch sẽ khi component mount hoặc khi vào trang login
+  useEffect(() => {
+    setEmail("");
+    setPassword("");
+    setError(null);
+    setLoading(false);
+    setSuccess(false);
+
+    if (isLoggedOutParam) {
+      setLoggedOutToast(true);
+      // Dọn cờ query khỏi URL sau khi đã nhận diện
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("loggedOut");
+        window.history.replaceState({}, "", url.toString());
+      }
+      const timer = setTimeout(() => {
+        setLoggedOutToast(false);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoggedOutParam]);
+
+  // Dọn dẹp timer redirect khi unmount
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLoggedOutToast(false);
     setLoading(true);
 
     try {
       await login({ email, password });
       setSuccess(true);
-      setTimeout(() => {
+      redirectTimerRef.current = setTimeout(() => {
         router.push(redirectUrl);
         router.refresh();
       }, 500);
     } catch (err: unknown) {
       setError(formatErrorMessage(err));
+      setSuccess(false);
     } finally {
       setLoading(false);
     }
@@ -72,6 +110,20 @@ function LoginForm() {
             Ứng dụng đặt đồ uống và thanh toán không dùng tiền mặt
           </p>
         </div>
+
+        {loggedOutToast && (
+          <div className="bg-[#FAF8F5] border-l-4 border-[#76513B] p-3.5 rounded-lg text-sm text-[#38291E] flex items-center justify-between shadow-2xs">
+            <span>Đăng xuất thành công.</span>
+            <button
+              type="button"
+              onClick={() => setLoggedOutToast(false)}
+              className="text-xs text-[#76513B] hover:text-[#38291E] font-bold ml-2 cursor-pointer"
+              aria-label="Đóng thông báo"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="bg-[#FDF2F2] border-l-4 border-[#C84B31] p-3.5 rounded-lg text-sm text-[#9B2C1C]">
@@ -101,7 +153,10 @@ function LoginForm() {
                 autoComplete="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (loggedOutToast) setLoggedOutToast(false);
+                }}
                 className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
                 placeholder="vidu@email.com"
               />
@@ -121,7 +176,10 @@ function LoginForm() {
                 autoComplete="current-password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (loggedOutToast) setLoggedOutToast(false);
+                }}
                 className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
                 placeholder="••••••••"
               />
@@ -131,7 +189,7 @@ function LoginForm() {
           <div>
             <button
               type="submit"
-              disabled={loading || success}
+              disabled={loading}
               className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-bold uppercase tracking-wider text-[#FFF9F0] bg-[#38291E] hover:bg-[#251A13] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#76513B] disabled:opacity-50 transition cursor-pointer"
             >
               {loading ? "Đang xử lý..." : "Đăng nhập"}

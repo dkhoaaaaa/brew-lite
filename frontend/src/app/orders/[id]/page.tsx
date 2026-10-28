@@ -23,6 +23,106 @@ export default function OrderDetailsPage() {
   );
 }
 
+
+function OrderStatusTimeline({ status }: { status: string }) {
+  const steps = [
+    { key: "PAID", label: "Đã thanh toán", desc: "Thanh toán thành công" },
+    { key: "PREPARING", label: "Đang chuẩn bị", desc: "Đang pha chế đồ uống" },
+    { key: "READY", label: "Sẵn sàng", desc: "Mời bạn nhận món tại quầy" },
+    { key: "COMPLETED", label: "Hoàn thành", desc: "Đơn hàng đã hoàn tất" },
+  ];
+
+  const stageOrder: Record<string, number> = {
+    PAID: 0,
+    PREPARING: 1,
+    READY: 2,
+    COMPLETED: 3,
+  };
+
+  const currentIndex = stageOrder[status] ?? -1;
+  if (currentIndex === -1) return null;
+
+  return (
+    <section className="bg-white border border-[#DED6CB] rounded-2xl p-5 sm:p-6 shadow-sm mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-6 border-b border-[#F0EAE1] gap-2">
+        <div>
+          <h2 className="text-base sm:text-lg font-bold text-[#30251D] font-heading">
+            Tiến trình xử lý đơn hàng
+          </h2>
+          <p className="text-xs text-[#76513B] mt-0.5">
+            Trạng thái được hệ thống tự động cập nhật theo thời gian thực
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {currentIndex < 3 && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+          <span className="text-xs font-semibold text-[#76513B]">
+            {steps[currentIndex]?.desc}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-2 relative">
+        {steps.map((step, idx) => {
+          const isDone = idx < currentIndex;
+          const isCurrent = idx === currentIndex;
+
+          return (
+            <div
+              key={step.key}
+              className="flex sm:flex-col items-center sm:items-center text-left sm:text-center gap-3 sm:gap-2 relative"
+            >
+              {idx < steps.length - 1 && (
+                <div
+                  className={`hidden sm:block absolute top-4 left-1/2 w-full h-[3px] -z-0 transition-colors ${
+                    idx < currentIndex ? "bg-[#38291E]" : "bg-[#EDE6DC]"
+                  }`}
+                />
+              )}
+
+              <div
+                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all shrink-0 ${
+                  isDone
+                    ? "bg-[#38291E] text-white shadow-xs"
+                    : isCurrent
+                    ? "bg-[#76513B] text-white ring-4 ring-[#76513B]/20 shadow-xs"
+                    : "bg-[#F5EFE6] text-[#A89A8D] border border-[#DED6CB]"
+                }`}
+              >
+                {isDone ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : isCurrent ? (
+                  <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                ) : (
+                  <span>{idx + 1}</span>
+                )}
+              </div>
+
+              <div className="flex-1 sm:flex-initial">
+                <span
+                  className={`text-xs sm:text-sm font-bold block ${
+                    isCurrent
+                      ? "text-[#38291E]"
+                      : isDone
+                      ? "text-[#30251D]"
+                      : "text-[#A89A8D]"
+                  }`}
+                >
+                  {step.label}
+                </span>
+                <span className="text-[11px] text-[#8C7E73] hidden sm:block mt-0.5">
+                  {step.desc}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function OrderDetailsContent() {
   const params = useParams();
   const router = useRouter();
@@ -69,6 +169,24 @@ function OrderDetailsContent() {
       active = false;
     };
   }, [id]);
+
+  // Polling tự động làm mới trạng thái khi đơn hàng đang trong tiến trình xử lý
+  useEffect(() => {
+    if (!id || !order) return;
+    const isProcessing = ["PAID", "PREPARING", "READY"].includes(order.status);
+    if (!isProcessing) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await getOrderById(id);
+        setOrder(updated);
+      } catch {
+        // Bỏ qua lỗi mạng tạm thời khi polling
+      }
+    }, 10_000); // 10 giây một lần
+
+    return () => clearInterval(interval);
+  }, [id, order?.status]);
 
   if (!isAuthenticated) {
     return (
@@ -220,6 +338,9 @@ function OrderDetailsContent() {
             <div>{getStatusBadge(order.status)}</div>
           </div>
         </header>
+
+        {/* Tiến trình đơn hàng (Timeline) */}
+        {order && <OrderStatusTimeline status={order.status} />}
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">

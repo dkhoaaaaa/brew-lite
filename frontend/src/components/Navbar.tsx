@@ -14,8 +14,9 @@ export default function Navbar() {
 
   const handleLogout = () => {
     logout();
-    router.push("/login");
     setMobileOpen(false);
+    router.replace("/login?loggedOut=true");
+    router.refresh();
   };
 
   const closeMobile = () => setMobileOpen(false);

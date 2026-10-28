@@ -4,7 +4,28 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
+  OnModuleDestroy,
 } from "@nestjs/common";
+
+const STATUS_PROGRESSION: Record<string, number> = {
+  PAID: 0,
+  PREPARING: 1,
+  READY: 2,
+  COMPLETED: 3,
+};
+
+export function determineStatusByElapsed(elapsedMs: number): "PAID" | "PREPARING" | "READY" | "COMPLETED" {
+  if (elapsedMs < 60_000) {
+    return "PAID";
+  } else if (elapsedMs < 180_000) {
+    return "PREPARING";
+  } else if (elapsedMs < 300_000) {
+    return "READY";
+  } else {
+    return "COMPLETED";
+  }
+}
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
 import { MockPaymentDto } from "./dto/mock-payment.dto.js";
@@ -12,7 +33,143 @@ import { MockPaymentDto } from "./dto/mock-payment.dto.js";
 const PENDING_TTL_MS = 2 * 60 * 1000; // Đơn PENDING hết hạn sau 2 phút theo yêu cầu
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OnModuleInit, OnModuleDestroy {
+  private syncTimer?: NodeJS.Timeout;
+
+  onModuleInit() {
+    this.syncTimer = setInterval(async () => {
+      try {
+        await this.syncActiveOrders();
+      } catch {
+        // Tránh unhandled rejection
+      }
+    }, 15_000);
+  }
+
+  onModuleDestroy() {
+    if (this.syncTimer) {
+      clearInterval(this.syncTimer);
+    }
+  }
+
+  /**
+   * Quét và đồng bộ tất cả đơn hàng đang trong tiến trình xử lý (PAID, PREPARING, READY)
+   */
+  async syncActiveOrders(now: Date = new Date()): Promise<void> {
+    try {
+      const activeOrders = await this.prisma.order.findMany({
+        where: { status: { in: ["PAID", "PREPARING", "READY"] } },
+        include: {
+          payments: { where: { status: "SUCCESS" }, orderBy: { createdAt: "desc" }, take: 1 },
+          statusHistory: { orderBy: { changedAt: "asc" } },
+        },
+        take: 50,
+      });
+
+      for (const order of activeOrders) {
+        await this.syncOrderState(order, now);
+      }
+    } catch {
+      // Bỏ qua lỗi ngầm
+    }
+  }
+
+  /**
+   * Đồng bộ trạng thái đơn hàng theo thời gian kể từ lúc thanh toán thành công (paidAt).
+   * Quy tắc:
+   * - 0 đến dưới 1 phút: PAID
+   * - 1 đến dưới 3 phút: PREPARING
+   * - 3 đến dưới 5 phút: READY
+   * - Từ 5 phút trở đi: COMPLETED
+   * Chỉ tiến tới, không bao giờ quay lùi.
+   */
+  async syncOrderState(order: any, now: Date = new Date()): Promise<any> {
+    if (!order || !["PAID", "PREPARING", "READY"].includes(order.status)) {
+      return order;
+    }
+
+    let paidAt: Date | null = null;
+
+    if (order.payments && Array.isArray(order.payments)) {
+      const successPayment = order.payments.find((p: any) => p.status === "SUCCESS" && p.paidAt);
+      if (successPayment) {
+        paidAt = new Date(successPayment.paidAt);
+      }
+    }
+
+    if (!paidAt && order.statusHistory && Array.isArray(order.statusHistory)) {
+      const paidHistory = order.statusHistory.find((h: any) => h.newStatus === "PAID" && h.changedAt);
+      if (paidHistory) {
+        paidAt = new Date(paidHistory.changedAt);
+      }
+    }
+
+    if (!paidAt) {
+      const dbPayment = await this.prisma.payment.findFirst({
+        where: { orderId: order.id, status: "SUCCESS", paidAt: { not: null } },
+        orderBy: { createdAt: "desc" },
+      });
+      if (dbPayment?.paidAt) {
+        paidAt = new Date(dbPayment.paidAt);
+      } else {
+        const dbHistory = await this.prisma.orderStatusHistory.findFirst({
+          where: { orderId: order.id, newStatus: "PAID" },
+          orderBy: { changedAt: "asc" },
+        });
+        if (dbHistory?.changedAt) {
+          paidAt = new Date(dbHistory.changedAt);
+        }
+      }
+    }
+
+    if (!paidAt || isNaN(paidAt.getTime())) {
+      return order;
+    }
+
+    const elapsedMs = now.getTime() - paidAt.getTime();
+    if (elapsedMs < 0) return order;
+
+    const targetStatus = determineStatusByElapsed(elapsedMs);
+    const currentProgression = STATUS_PROGRESSION[order.status];
+    const targetProgression = STATUS_PROGRESSION[targetStatus];
+
+    if (
+      targetProgression !== undefined &&
+      currentProgression !== undefined &&
+      targetProgression > currentProgression
+    ) {
+      const notesMap: Record<string, string> = {
+        PREPARING: "Đã quá 1 phút kể từ khi thanh toán: Đang chuẩn bị đồ uống.",
+        READY: "Đã quá 3 phút kể từ khi thanh toán: Đồ uống đã sẵn sàng.",
+        COMPLETED: "Đã quá 5 phút kể từ khi thanh toán: Hoàn thành đơn hàng.",
+      };
+
+      const [updatedOrder] = await this.prisma.$transaction([
+        this.prisma.order.update({
+          where: { id: order.id },
+          data: { status: targetStatus },
+          include: {
+            orderItems: { include: { toppings: true } },
+            payments: { orderBy: { createdAt: "desc" } },
+            statusHistory: { orderBy: { changedAt: "asc" } },
+          },
+        }),
+        this.prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            oldStatus: order.status,
+            newStatus: targetStatus,
+            note: notesMap[targetStatus] ?? `Tự động chuyển sang ${targetStatus}`,
+            changedAt: now,
+          },
+        }),
+      ]);
+
+      return updatedOrder;
+    }
+
+    return order;
+  }
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -197,7 +354,7 @@ export class OrdersService {
     await this.cleanupExpiredOrders(userId);
 
     // 2. Lấy danh sách đơn còn hiệu lực
-    const orders = await this.prisma.order.findMany({
+    const rawOrders = await this.prisma.order.findMany({
       where: {
         userId,
         ...(statusFilter && statusFilter !== "ALL" ? { status: statusFilter } : {}),
@@ -209,12 +366,26 @@ export class OrdersService {
         },
         payments: {
           orderBy: { createdAt: "desc" },
-          take: 1,
+        },
+        statusHistory: {
+          orderBy: { changedAt: "asc" },
         },
       },
     });
 
-    return orders.map((o) => this.serializeOrder(o));
+    const orders = Array.isArray(rawOrders) ? rawOrders : [];
+
+    // 3. Đồng bộ trạng thái theo thời gian cho các đơn đang trong tiến trình xử lý
+    const syncedOrders = await Promise.all(
+      orders.map(async (o) => {
+        if (["PAID", "PREPARING", "READY"].includes(o.status)) {
+          return this.syncOrderState(o);
+        }
+        return o;
+      }),
+    );
+
+    return syncedOrders.map((o) => this.serializeOrder(o));
   }
 
   /**
@@ -276,6 +447,12 @@ export class OrdersService {
       return this.serializeOrder(updatedCancelled);
     }
 
+    // Nếu đơn đang ở trạng thái PAID, PREPARING, READY -> Đồng bộ trạng thái trước khi trả về
+    if (["PAID", "PREPARING", "READY"].includes(order.status)) {
+      const syncedOrder = await this.syncOrderState(order);
+      return this.serializeOrder(syncedOrder);
+    }
+
     return this.serializeOrder(order);
   }
 
@@ -307,6 +484,7 @@ export class OrdersService {
         status: "PAID",
         paymentStatus: "SUCCESS",
         message: "Đơn hàng đã được thanh toán trước đó.",
+        pointsEarned: 0,
       };
     }
 
@@ -346,10 +524,15 @@ export class OrdersService {
       const idempotencyKey = dto.idempotencyKey || `mock_success_${order.id}_${Date.now()}`;
       const txCode = `MOCK-TX-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
 
-      const [updatedOrder] = await this.prisma.$transaction([
+      const shouldAwardPoints = (order.pointsEarned ?? 0) === 0;
+
+      const txOperations: any[] = [
         this.prisma.order.update({
           where: { id: order.id },
-          data: { status: "PAID" },
+          data: {
+            status: "PAID",
+            ...(shouldAwardPoints ? { pointsEarned: 100 } : {}),
+          },
         }),
         this.prisma.payment.create({
           data: {
@@ -374,10 +557,44 @@ export class OrdersService {
             orderId: order.id,
             oldStatus: order.status,
             newStatus: "PAID",
-            note: `Mô phỏng thanh toán thành công qua ${dto.method === "E_WALLET" ? "Ví điện tử" : "Thẻ ngân hàng"}`,
+            note: `Mô phỏng thanh toán thành công qua ${dto.method === "E_WALLET" ? "Ví điện tử" : "Thẻ ngân hàng"}${shouldAwardPoints ? " (+100 điểm thưởng)" : ""}`,
           },
         }),
-      ]);
+      ];
+
+      // Nếu chưa cộng điểm cho đơn này, cộng 100 điểm vào tài khoản user
+      if (shouldAwardPoints) {
+        txOperations.push(
+          this.prisma.user.update({
+            where: { id: order.userId },
+            data: { loyaltyPoints: { increment: 100 } },
+          }),
+        );
+      }
+
+      // Nếu đơn hàng có sử dụng voucher, cập nhật usedCount và ghi nhận PromotionUsage
+      if (order.promotionId) {
+        txOperations.push(
+          this.prisma.promotion.update({
+            where: { id: order.promotionId },
+            data: { usedCount: { increment: 1 } },
+          }),
+        );
+        txOperations.push(
+          this.prisma.promotionUsage.upsert({
+            where: { orderId: order.id },
+            update: {},
+            create: {
+              promotionId: order.promotionId,
+              userId: order.userId,
+              orderId: order.id,
+              discountAmount: order.discountAmount,
+            },
+          }),
+        );
+      }
+
+      const [updatedOrder] = await this.prisma.$transaction(txOperations);
 
       return {
         outcome: "SIMULATED_SUCCESS",
@@ -386,6 +603,7 @@ export class OrdersService {
         status: "PAID",
         paymentStatus: "SUCCESS",
         message: "Mô phỏng thanh toán thành công.",
+        pointsEarned: shouldAwardPoints ? 100 : 0,
       };
     } else {
       // Khi thất bại: Ghi nhận Payment FAILED và chuyển status đơn hàng thành PAYMENT_FAILED
@@ -426,6 +644,119 @@ export class OrdersService {
         message: "Mô phỏng thanh toán thất bại. Vui lòng thử thanh toán lại.",
       };
     }
+  }
+
+  /**
+   * Áp dụng mã khuyến mại (voucher) vào đơn hàng đang chờ thanh toán.
+   */
+  async applyVoucher(orderId: bigint, userId: bigint, voucherCode: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        orderItems: { include: { toppings: true } },
+        payments: { orderBy: { createdAt: "desc" } },
+        statusHistory: { orderBy: { changedAt: "asc" } },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException("Đơn hàng không tồn tại.");
+    }
+    if (order.userId !== userId) {
+      throw new ForbiddenException("Bạn không có quyền thao tác trên đơn hàng này.");
+    }
+    if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
+      throw new BadRequestException("Chỉ có thể áp dụng mã khuyến mại cho đơn hàng chưa thanh toán.");
+    }
+
+    const cleanCode = (voucherCode || "").trim().toUpperCase();
+    const promotion = await this.prisma.promotion.findUnique({
+      where: { code: cleanCode },
+    });
+
+    if (!promotion) {
+      throw new NotFoundException("Mã khuyến mại không tồn tại.");
+    }
+
+    if (promotion.ownerUserId && promotion.ownerUserId !== userId) {
+      throw new BadRequestException("Mã khuyến mại này không thuộc về tài khoản của bạn.");
+    }
+
+    if (!promotion.isActive) {
+      throw new BadRequestException("Mã khuyến mại hiện đang tạm khóa hoặc không hoạt động.");
+    }
+
+    const now = new Date();
+    if (promotion.endAt < now) {
+      throw new BadRequestException("Mã khuyến mại đã hết hạn sử dụng.");
+    }
+
+    if (promotion.usedCount >= (promotion.usageLimit ?? 1)) {
+      throw new BadRequestException("Mã khuyến mại này đã được sử dụng.");
+    }
+
+    const subtotal = order.subtotal?.toNumber ? order.subtotal.toNumber() : Number(order.subtotal);
+    const minOrder = promotion.minOrderAmount?.toNumber ? promotion.minOrderAmount.toNumber() : Number(promotion.minOrderAmount);
+    if (subtotal < minOrder) {
+      throw new BadRequestException(`Đơn hàng phải đạt tối thiểu ${minOrder.toLocaleString("vi-VN")} đ để áp dụng mã này.`);
+    }
+
+    const discountVal = promotion.discountValue?.toNumber ? promotion.discountValue.toNumber() : Number(promotion.discountValue);
+    const discountAmount = Math.min(discountVal, subtotal);
+    const total = Math.max(0, subtotal - discountAmount);
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        promotionId: promotion.id,
+        discountAmount,
+        total,
+      },
+      include: {
+        orderItems: { include: { toppings: true } },
+        payments: { orderBy: { createdAt: "desc" } },
+        statusHistory: { orderBy: { changedAt: "asc" } },
+      },
+    });
+
+    return this.serializeOrder(updatedOrder);
+  }
+
+  /**
+   * Hủy áp dụng mã khuyến mại khỏi đơn hàng.
+   */
+  async removeVoucher(orderId: bigint, userId: bigint) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!order) {
+      throw new NotFoundException("Đơn hàng không tồn tại.");
+    }
+    if (order.userId !== userId) {
+      throw new ForbiddenException("Bạn không có quyền thao tác trên đơn hàng này.");
+    }
+    if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
+      throw new BadRequestException("Chỉ có thể thay đổi mã khuyến mại cho đơn hàng chưa thanh toán.");
+    }
+
+    const subtotal = order.subtotal?.toNumber ? order.subtotal.toNumber() : Number(order.subtotal);
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        promotionId: null,
+        discountAmount: 0,
+        total: subtotal,
+      },
+      include: {
+        orderItems: { include: { toppings: true } },
+        payments: { orderBy: { createdAt: "desc" } },
+        statusHistory: { orderBy: { changedAt: "asc" } },
+      },
+    });
+
+    return this.serializeOrder(updatedOrder);
   }
 
   /**
@@ -477,6 +808,8 @@ export class OrdersService {
       id: order.id.toString(),
       orderCode: order.orderCode,
       status: order.status,
+      pointsEarned: order.pointsEarned ?? 0,
+      promotionId: order.promotionId ? order.promotionId.toString() : null,
       subtotal: order.subtotal?.toNumber ? order.subtotal.toNumber() : Number(order.subtotal),
       discountAmount: order.discountAmount?.toNumber
         ? order.discountAmount.toNumber()
