@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Be_Vietnam_Pro, Merriweather } from "next/font/google";
 import Navbar from "../components/Navbar";
 import { CartProvider } from "../features/cart/cart-store";
-import "../styles/tailwind.css";
 import "../styles/global.css";
+import "../styles/tailwind.css";
 
 const merriweather = Merriweather({
   subsets: ["vietnamese", "latin"],
@@ -22,6 +22,9 @@ const beVietnamPro = Be_Vietnam_Pro({
 export const metadata: Metadata = {
   title: "BrewLite - Cà phê & Đồ uống hiện đại",
   description: "Ứng dụng đặt cà phê không dùng tiền mặt",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({
