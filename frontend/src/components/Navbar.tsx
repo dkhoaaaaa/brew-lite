@@ -14,8 +14,9 @@ export default function Navbar() {
 
   const handleLogout = () => {
     logout();
-    router.push("/login");
     setMobileOpen(false);
+    router.replace("/login?loggedOut=true");
+    router.refresh();
   };
 
   const closeMobile = () => setMobileOpen(false);
@@ -44,25 +45,55 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* Actions: text-based buttons */}
-        <div className="site-nav__actions flex items-center gap-3">
-          {/* Tìm kiếm */}
+        {/* Actions: icon-based buttons tối giản */}
+        <div className="site-nav__actions flex items-center gap-1.5 sm:gap-2">
+          {/* 1. Icon Tìm kiếm */}
           <Link
             href="/menu"
-            className="nav-auth-btn nav-auth-btn--ghost text-xs"
+            className="w-9 h-9 flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="Tìm kiếm món"
+            title="Tìm kiếm món"
           >
-            Tìm kiếm
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
           </Link>
 
-          {/* Giỏ hàng */}
+          {/* 2. Icon Giỏ hàng kèm badge số lượng */}
           <Link
             href="/cart"
             aria-label={`Giỏ hàng, ${itemCount} sản phẩm`}
-            className="nav-auth-btn nav-auth-btn--ghost text-xs relative"
+            title="Giỏ hàng"
+            className="relative w-9 h-9 flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
           >
-            Giỏ hàng
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <path d="M16 10a4 4 0 0 1-8 0" />
+            </svg>
             {itemCount > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-xs font-bold bg-amber-600 text-white">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-amber-600 text-white flex items-center justify-center shadow-xs">
                 {itemCount > 9 ? "9+" : itemCount}
               </span>
             )}
@@ -70,53 +101,103 @@ export default function Navbar() {
 
           {currentUser ? (
             <>
-              {/* Tài khoản */}
+              {/* 3. Icon Thông tin cá nhân / Tài khoản */}
               <Link
                 href="/profile"
-                className="nav-auth-btn nav-auth-btn--ghost text-xs"
+                className="w-9 h-9 flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
+                aria-label="Thông tin cá nhân"
+                title="Thông tin cá nhân"
               >
-                Tài khoản
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
               </Link>
 
-              {/* Đăng xuất */}
+              {/* 4. Icon Đăng xuất */}
               <button
                 onClick={handleLogout}
-                className="nav-auth-btn nav-auth-btn--ghost text-xs"
+                className="w-9 h-9 flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-rose-400 hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="Đăng xuất"
+                title="Đăng xuất"
                 type="button"
               >
-                Đăng xuất
+                <svg
+                  width="19"
+                  height="19"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
               </button>
             </>
           ) : (
-            <>
-              {/* Đăng nhập */}
+            <div className="flex items-center gap-1.5 ml-1">
+              {/* Icon Đăng nhập khi chưa có tài khoản */}
               <Link
                 href={itemCount > 0 ? `/login?redirect=${encodeURIComponent("/cart?autoCheckout=true")}` : "/login"}
-                className="nav-auth-btn nav-auth-btn--ghost text-xs"
+                className="h-8 px-3 rounded-full text-xs font-semibold text-[#E7DECE] hover:text-white bg-white/10 hover:bg-white/15 transition-colors flex items-center gap-1.5"
+                title="Đăng nhập"
               >
-                Đăng nhập
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                  <polyline points="10 17 15 12 10 7" />
+                  <line x1="15" y1="12" x2="3" y2="12" />
+                </svg>
+                <span>Đăng nhập</span>
               </Link>
-
-              {/* Đăng ký */}
-              <Link
-                href={itemCount > 0 ? `/register?redirect=${encodeURIComponent("/cart?autoCheckout=true")}` : "/register"}
-                className="nav-auth-btn nav-auth-btn--solid text-xs"
-              >
-                Đăng ký
-              </Link>
-            </>
+            </div>
           )}
 
-          {/* Hamburger toggle dạng text trên mobile */}
+          {/* Hamburger toggle dạng icon trên mobile */}
           <button
-            className="nav-hamburger text-xs font-bold px-2 py-1 border border-stone-600 rounded text-stone-200 sm:hidden"
+            className="w-9 h-9 flex items-center justify-center rounded-lg text-[#E7DECE] hover:bg-white/10 sm:hidden transition-colors cursor-pointer"
             onClick={() => setMobileOpen((prev) => !prev)}
             aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
             aria-expanded={mobileOpen}
             aria-controls="site-mobile-menu"
             type="button"
           >
-            {mobileOpen ? "Đóng" : "Menu"}
+            {mobileOpen ? (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            )}
           </button>
         </div>
       </div>
@@ -162,7 +243,7 @@ export default function Navbar() {
                 onClick={closeMobile}
                 role="menuitem"
               >
-                Đơn hàng
+                Đơn hàng của tôi
               </Link>
               <Link
                 href="/profile"
@@ -170,10 +251,10 @@ export default function Navbar() {
                 onClick={closeMobile}
                 role="menuitem"
               >
-                Tài khoản
+                Thông tin cá nhân
               </Link>
               <button
-                className="site-nav__mobile-link text-left"
+                className="site-nav__mobile-link text-left text-rose-300 hover:text-rose-200"
                 onClick={handleLogout}
                 type="button"
                 role="menuitem"
@@ -197,7 +278,7 @@ export default function Navbar() {
                 onClick={closeMobile}
                 role="menuitem"
               >
-                Đăng ký
+                Đăng ký tài khoản
               </Link>
             </>
           )}

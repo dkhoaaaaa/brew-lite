@@ -2,9 +2,17 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Toast } from "../../components/Toast";
 import { formatErrorMessage } from "../../lib/api-client";
 import { getProfile, updateProfile, useAuth } from "../../lib/auth";
 import { getMyOrders, type CreatedOrderResponse } from "../../lib/orders-api";
+import {
+  getLoyaltyRewards,
+  getMyVouchers,
+  redeemVoucher,
+  type RewardTier,
+  type UserVoucher,
+} from "../../lib/loyalty-api";
 import { formatPrice } from "../../lib/money";
 
 export default function ProfilePage() {
@@ -21,10 +29,26 @@ export default function ProfilePage() {
   const [recentOrders, setRecentOrders] = useState<CreatedOrderResponse[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
+  // Trạng thái Loyalty & Voucher
+  const [rewardTiers, setRewardTiers] = useState<RewardTier[]>([]);
+  const [userVouchers, setUserVouchers] = useState<UserVoucher[]>([]);
+  const [redeemingTierId, setRedeemingTierId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ title: string; message?: string } | null>(null);
+  const [copiedVoucherId, setCopiedVoucherId] = useState<string | null>(null);
+
   // Trạng thái cập nhật thông tin cá nhân
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoSuccess, setInfoSuccess] = useState<string | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
+
+  // Trạng thái đổi mật khẩu
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passLoading, setPassLoading] = useState(false);
+  const [passSuccess, setPassSuccess] = useState<string | null>(null);
+  const [passError, setPassError] = useState<string | null>(null);
 
   const renderOrderStatusBadge = (status: string) => {
     switch (status) {
@@ -79,15 +103,6 @@ export default function ProfilePage() {
     }
   };
 
-  // Trạng thái đổi mật khẩu
-  const [showPasswordChange, setShowPasswordChange] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passLoading, setPassLoading] = useState(false);
-  const [passSuccess, setPassSuccess] = useState<string | null>(null);
-  const [passError, setPassError] = useState<string | null>(null);
-
   // Đồng bộ thông tin từ backend khi vào trang
   useEffect(() => {
     if (!isAuthenticated) {
@@ -133,10 +148,71 @@ export default function ProfilePage() {
         if (active) setLoadingOrders(false);
       });
 
+    getLoyaltyRewards()
+      .then((tiers) => {
+        if (!active) return;
+        setRewardTiers(tiers);
+      })
+      .catch(() => {});
+
+    getMyVouchers()
+      .then((vouchers) => {
+        if (!active) return;
+        setUserVouchers(vouchers);
+      })
+      .catch(() => {});
+
     return () => {
       active = false;
     };
   }, [isAuthenticated, user?.id]);
+
+  // Xử lý đổi điểm lấy voucher trực tiếp
+  const handleRedeem = async (tier: RewardTier) => {
+    if (loyaltyPoints < tier.pointsCost) {
+      setToast({
+        title: "Không đủ điểm",
+        message: `Bạn cần thêm ${(tier.pointsCost - loyaltyPoints).toLocaleString("vi-VN")} điểm để đổi mã này.`,
+      });
+      return;
+    }
+
+    setRedeemingTierId(tier.id);
+    try {
+      const res = await redeemVoucher(tier.id);
+      setLoyaltyPoints(res.remainingPoints);
+      setToast({
+        title: "Đổi mã khuyến mãi thành công!",
+        message: res.message || `Đã đổi thành công mã ${tier.name}. Mã đã được lưu vào mục Mã khuyến mãi của bạn bên dưới.`,
+      });
+
+      // Tải lại danh sách voucher của người dùng từ backend
+      const updatedVouchers = await getMyVouchers().catch(() => []);
+      setUserVouchers(updatedVouchers);
+    } catch (err: any) {
+      setToast({
+        title: "Đổi ưu đãi không thành công",
+        message: err.message || "Không thể đổi mã khuyến mãi lúc này. Vui lòng thử lại.",
+      });
+    } finally {
+      setRedeemingTierId(null);
+    }
+  };
+
+  const handleCopyVoucher = async (code: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedVoucherId(id);
+      setTimeout(() => setCopiedVoucherId(null), 2000);
+      setToast({
+        title: "Đã sao chép mã!",
+        message: `Mã ${code} đã được lưu vào bộ nhớ tạm. Dán mã tại trang thanh toán.`,
+      });
+    } catch {
+      setCopiedVoucherId(id);
+      setTimeout(() => setCopiedVoucherId(null), 2000);
+    }
+  };
 
   // Xử lý lưu thông tin cá nhân (Họ tên, SĐT)
   const handleUpdateInfo = async (e: React.FormEvent) => {
@@ -240,7 +316,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-[#F7F5F1] py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-8">
-        {/* TIÊU ĐỀ TRANG & THÔNG TIN TỔNG QUAN */}
+        {/* ── 1. TIÊU ĐỀ TRANG & THÔNG TIN TỔNG QUAN ── */}
         <div className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-6 sm:p-8 flex flex-col sm:flex-row items-start justify-between gap-6">
           <div className="space-y-1">
             <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-1">
@@ -275,7 +351,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ── MỤC ĐIỂM THƯỞNG CỦA NGƯỜI DÙNG (LOYALTY POINTS) ── */}
+        {/* ── 2. MỤC ĐIỂM THƯỞNG CỦA NGƯỜI DÙNG (LOYALTY POINTS) ── */}
         <div
           className="text-white rounded-2xl p-6 sm:p-8 shadow-md relative overflow-hidden border border-[#D8CFC2]/20"
           style={{
@@ -337,17 +413,249 @@ export default function ProfilePage() {
               <p className="text-xs text-[#E7DECE]/80">
                 Đặt thêm món ngay hôm nay để nhận thêm điểm thưởng!
               </p>
-              <Link
-                href="/menu"
-                className="px-5 py-2.5 bg-[#E7DECE] hover:bg-white text-[#30251D] rounded-full font-bold text-xs uppercase tracking-wider transition shadow-sm"
-              >
-                Đặt đồ uống ngay
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href="#redeem-section"
+                  className="px-5 py-2.5 bg-[#FFF9F0] hover:bg-white text-[#30251D] rounded-full font-bold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer"
+                >
+                  Đổi ưu đãi ngay ↓
+                </a>
+                <Link
+                  href="/menu"
+                  className="px-5 py-2.5 bg-[#E7DECE]/20 hover:bg-[#E7DECE]/30 text-[#FFF9F0] border border-[#E7DECE]/40 rounded-full font-bold text-xs uppercase tracking-wider transition shadow-sm"
+                >
+                  Đặt đồ uống ngay
+                </Link>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* ── MỤC ĐƠN HÀNG GẦN ĐÂY CỦA TÀI KHOẢN ── */}
+        {/* ── 3. MỤC ĐỔI ĐIỂM LẤY ƯU ĐÃI (SECTION CARD CỐ ĐỊNH) ── */}
+        <div
+          id="redeem-section"
+          className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-6 sm:p-8 space-y-6 scroll-mt-6"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#D8CFC2]/60 pb-4">
+            <div>
+              <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-1">
+                Ưu đãi thành viên
+              </p>
+              <h2
+                className="text-xl font-bold text-[#30251D]"
+                style={{ fontFamily: "var(--font-heading, serif)" }}
+              >
+                Đổi điểm lấy ưu đãi
+              </h2>
+              <p className="text-sm text-[#76513B] mt-0.5">
+                Sử dụng điểm thưởng tích lũy để đổi những mã giảm giá hấp dẫn tại BrewLite.
+              </p>
+            </div>
+            <div className="text-left sm:text-right shrink-0">
+              <span className="text-xs text-[#76513B]">Điểm khả dụng: </span>
+              <span className="font-extrabold text-base text-[#30251D]">
+                {loyaltyPoints.toLocaleString("vi-VN")} điểm
+              </span>
+            </div>
+          </div>
+
+          {rewardTiers.length === 0 ? (
+            <div className="py-8 text-center text-[#76513B]/70 text-sm">
+              Đang tải danh sách ưu đãi quy đổi...
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {rewardTiers.map((tier) => {
+                const hasEnoughPoints = loyaltyPoints >= tier.pointsCost;
+                const isRedeeming = redeemingTierId === tier.id;
+
+                return (
+                  <div
+                    key={tier.id}
+                    className={`relative rounded-xl p-5 border transition flex flex-col justify-between ${
+                      hasEnoughPoints
+                        ? "bg-[#FAF8F5] border-[#D8CFC2] hover:border-[#76513B] hover:shadow-xs"
+                        : "bg-[#F7F5F1]/70 border-[#E7DECE] opacity-85"
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#EAE1D2] text-[#5B3E2D]">
+                          ⭐ {tier.pointsCost.toLocaleString("vi-VN")} điểm
+                        </span>
+                        {hasEnoughPoints ? (
+                          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                            Đủ điểm đổi
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-md">
+                            Thiếu {(tier.pointsCost - loyaltyPoints).toLocaleString("vi-VN")} điểm
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <h3
+                          className="text-lg font-bold text-[#30251D]"
+                          style={{ fontFamily: "var(--font-heading, serif)" }}
+                        >
+                          {tier.name}
+                        </h3>
+                        <p className="text-xs text-[#76513B] mt-1 leading-relaxed">
+                          {tier.description || "Áp dụng cho mọi đơn hàng tại BrewLite."}
+                        </p>
+                      </div>
+
+                      <div className="text-xs text-[#76513B]/80 pt-1 border-t border-[#D8CFC2]/40 flex items-center gap-1.5">
+                        <span>🕒</span>
+                        <span>Hạn sử dụng: 30 ngày từ lúc đổi</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-5 mt-2">
+                      <button
+                        type="button"
+                        disabled={!hasEnoughPoints || isRedeeming}
+                        onClick={() => handleRedeem(tier)}
+                        className={`w-full py-2.5 px-4 rounded-lg font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 ${
+                          hasEnoughPoints
+                            ? "bg-[#38291E] hover:bg-[#251A13] text-[#FFF9F0] shadow-2xs cursor-pointer"
+                            : "bg-[#EAE1D2] text-[#8C7E73] cursor-not-allowed"
+                        }`}
+                      >
+                        {isRedeeming
+                          ? "Đang xử lý..."
+                          : hasEnoughPoints
+                          ? "Đổi ngay"
+                          : "Không đủ điểm"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── 4. MỤC MÃ KHUYẾN MÃI CỦA TÔI (MY VOUCHERS) ── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#D8CFC2]/60 pb-4">
+            <div>
+              <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-1">
+                Ưu đãi của bạn
+              </p>
+              <h2
+                className="text-xl font-bold text-[#30251D]"
+                style={{ fontFamily: "var(--font-heading, serif)" }}
+              >
+                Mã khuyến mãi của tôi
+              </h2>
+              <p className="text-sm text-[#76513B] mt-0.5">
+                Các mã giảm giá bạn đã đổi thành công. Bạn có thể chọn áp dụng tại trang thanh toán.
+              </p>
+            </div>
+            {userVouchers.length > 0 && (
+              <span className="text-xs font-semibold px-3 py-1 bg-[#FAF8F5] border border-[#D8CFC2] text-[#30251D] rounded-full self-start sm:self-center">
+                {userVouchers.filter((v) => v.canApply).length} mã có thể dùng
+              </span>
+            )}
+          </div>
+
+          {userVouchers.length === 0 ? (
+            <div className="py-10 text-center space-y-3 bg-[#FAF8F5] rounded-xl border border-dashed border-[#D8CFC2] p-6">
+              <div className="text-3xl">🎟️</div>
+              <p
+                className="text-base font-bold text-[#30251D]"
+                style={{ fontFamily: "var(--font-heading, serif)" }}
+              >
+                Bạn chưa có mã khuyến mãi nào.
+              </p>
+              <p className="text-xs text-[#76513B] max-w-md mx-auto leading-relaxed">
+                Hãy tích lũy điểm để đổi những ưu đãi hấp dẫn ở mục phía trên! Mỗi đơn hàng thanh toán thành công sẽ giúp bạn tích thêm 100 điểm thưởng.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {userVouchers.map((voucher) => {
+                const isCopied = copiedVoucherId === voucher.id;
+
+                return (
+                  <div
+                    key={voucher.id}
+                    className={`rounded-xl p-4 border transition flex flex-col justify-between ${
+                      voucher.canApply
+                        ? "bg-[#FAF8F5] border-[#D8CFC2] hover:border-[#76513B] hover:shadow-2xs"
+                        : "bg-[#F7F5F1]/60 border-[#E7DECE] opacity-75"
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        {/* Mã voucher */}
+                        <span className="font-mono font-bold text-xs bg-white px-2.5 py-1 rounded-md border border-[#D8CFC2] text-[#30251D] tracking-wider select-all">
+                          {voucher.code}
+                        </span>
+                        {/* Badge trạng thái */}
+                        {voucher.isUsed ? (
+                          <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-[#F5F5F4] text-[#78716C] border border-[#E7E5E4]">
+                            Đã sử dụng
+                          </span>
+                        ) : voucher.isExpired ? (
+                          <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-[#FEE2E2] text-[#991B1B] border border-[#FECACA]">
+                            Hết hạn
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]">
+                            Chưa sử dụng
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4
+                          className="font-bold text-base text-[#30251D]"
+                          style={{ fontFamily: "var(--font-heading, serif)" }}
+                        >
+                          {voucher.name}
+                        </h4>
+                        <p className="text-xs text-[#76513B] mt-0.5 line-clamp-1">
+                          {voucher.description || "Áp dụng cho mọi đơn hàng tại BrewLite"}
+                        </p>
+                      </div>
+
+                      <div className="text-[11px] text-[#76513B]/80 pt-2 border-t border-[#D8CFC2]/40 flex justify-between items-center">
+                        <span>Hạn dùng:</span>
+                        <strong className="text-[#30251D]">
+                          {new Date(voucher.endAt).toLocaleDateString("vi-VN")}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 mt-2 flex items-center justify-between gap-2 border-t border-[#D8CFC2]/40">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyVoucher(voucher.code, voucher.id)}
+                        className="text-xs font-semibold text-[#76513B] hover:text-[#30251D] transition cursor-pointer flex items-center gap-1"
+                      >
+                        <span>{isCopied ? "✓ Đã sao chép" : "📋 Sao chép mã"}</span>
+                      </button>
+
+                      {voucher.canApply && (
+                        <Link
+                          href="/menu"
+                          className="text-xs font-bold text-[#38291E] hover:underline"
+                        >
+                          Dùng ngay →
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── 5. MỤC ĐƠN HÀNG GẦN ĐÂY CỦA TÀI KHOẢN ── */}
         <div className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-6 sm:p-8 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#D8CFC2]/60 pb-4">
             <div>
@@ -449,7 +757,7 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* ── MỤC CHỈNH SỬA THÔNG TIN CÁ NHÂN ── */}
+        {/* ── 6. MỤC CHỈNH SỬA THÔNG TIN CÁ NHÂN ── */}
         <div className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-6 sm:p-8 space-y-6">
           <div className="border-b border-[#D8CFC2]/60 pb-4">
             <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-1">
@@ -555,7 +863,7 @@ export default function ProfilePage() {
           </form>
         </div>
 
-        {/* ── MỤC ĐỔI MẬT KHẨU BẢO MẬT ── */}
+        {/* ── 7. MỤC ĐỔI MẬT KHẨU BẢO MẬT ── */}
         <div className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-6 sm:p-8 space-y-6">
           <div className="flex items-center justify-between border-b border-[#D8CFC2]/60 pb-4">
             <div>
@@ -674,6 +982,15 @@ export default function ProfilePage() {
             </form>
           )}
         </div>
+
+        {/* ── TOAST THÔNG BÁO ── */}
+        {toast && (
+          <Toast
+            title={toast.title}
+            message={toast.message}
+            onClose={() => setToast(null)}
+          />
+        )}
       </div>
     </div>
   );

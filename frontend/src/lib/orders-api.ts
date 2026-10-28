@@ -65,6 +65,8 @@ export interface CreatedOrderResponse {
   subtotal: number;
   discountAmount: number;
   total: number;
+  pointsEarned?: number;
+  promotionId?: string | null;
   note?: string;
   expiresAt: string | null;
   createdAt: string;
@@ -86,6 +88,7 @@ export interface MockPaymentApiResponse {
   status: string;
   paymentStatus: string;
   message: string;
+  pointsEarned?: number;
 }
 
 function getAuthHeaders(): HeadersInit {
@@ -230,6 +233,55 @@ export async function cancelOrder(orderId: string): Promise<CreatedOrderResponse
       }
     } catch {
       // Ignore parse error
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+}
+
+export async function applyVoucherToOrder(orderId: string, code: string): Promise<CreatedOrderResponse> {
+  const response = await fetch(`${API_URL}/orders/${encodeURIComponent(orderId)}/apply-voucher`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ code }),
+  });
+
+  if (!response.ok) {
+    let errorMessage = "Không thể áp dụng mã khuyến mại.";
+    try {
+      const errorBody = await response.json();
+      if (errorBody && errorBody.message) {
+        errorMessage = Array.isArray(errorBody.message)
+          ? errorBody.message.join("; ")
+          : errorBody.message;
+      }
+    } catch {
+      // Ignore
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+}
+
+export async function removeVoucherFromOrder(orderId: string): Promise<CreatedOrderResponse> {
+  const response = await fetch(`${API_URL}/orders/${encodeURIComponent(orderId)}/remove-voucher`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    let errorMessage = "Không thể hủy áp dụng mã khuyến mại.";
+    try {
+      const errorBody = await response.json();
+      if (errorBody && errorBody.message) {
+        errorMessage = Array.isArray(errorBody.message)
+          ? errorBody.message.join("; ")
+          : errorBody.message;
+      }
+    } catch {
+      // Ignore
     }
     throw new Error(errorMessage);
   }

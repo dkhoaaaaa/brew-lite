@@ -16,6 +16,8 @@ export type ProductSummary = {
   description: string | null;
   price: string;
   imageUrl: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
 };
 
 export type ProductDetailData = ProductSummary & {

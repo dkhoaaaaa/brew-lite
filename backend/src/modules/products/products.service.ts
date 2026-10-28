@@ -15,14 +15,78 @@ export class ProductsService {
         description: true,
         price: true,
         imageUrl: true,
+        categoryId: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
     return products.map((product) => ({
-      ...product,
       id: product.id.toString(),
+      name: product.name,
+      description: product.description,
       price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId ? product.categoryId.toString() : null,
+      categoryName: product.category?.name ?? null,
     }));
+  }
+
+  // Hàm phục vụ Phân trang
+  async findAllPaginated(page: number = 1, limit: number = 5) {
+    const skip = (page - 1) * limit;
+
+    // Sử dụng Promise.all để chạy song song việc lấy dữ liệu trang và đếm tổng số lượng (tối ưu hiệu suất)
+    const [products, totalItems] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        skip: skip,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          price: true,
+          imageUrl: true,
+          categoryId: true,
+          category: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      }),
+      this.prisma.product.count({
+        where: { isActive: true },
+      }),
+    ]);
+
+    const formattedProducts = products.map((product) => ({
+      id: product.id.toString(),
+      name: product.name,
+      description: product.description,
+      price: product.price.toString(),
+      imageUrl: product.imageUrl,
+      categoryId: product.categoryId ? product.categoryId.toString() : null,
+      categoryName: product.category?.name ?? null,
+    }));
+
+    return {
+      data: formattedProducts,
+      meta: {
+        totalItems,
+        itemCount: formattedProducts.length,
+        itemsPerPage: limit,
+        totalPages: Math.ceil(totalItems / limit) || 1,
+        currentPage: page,
+      },
+    };
   }
 
   // Hàm mới phục vụ Phân trang (5 sản phẩm / trang)
@@ -76,6 +140,13 @@ export class ProductsService {
         description: true,
         price: true,
         imageUrl: true,
+        categoryId: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         productSizes: {
           where: { isActive: true },
           orderBy: { sizeCode: "asc" },
@@ -109,6 +180,8 @@ export class ProductsService {
       description: product.description,
       price: product.price.toString(),
       imageUrl: product.imageUrl,
+      categoryId: product.categoryId ? product.categoryId.toString() : null,
+      categoryName: product.category?.name ?? null,
       sizes: product.productSizes.map((size) => ({
         id: size.id.toString(),
         sizeCode: size.sizeCode,

@@ -160,8 +160,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }
 
   function addItem(item: ConfiguredProduct) {
+    // Tự động chuẩn hóa đường dẫn ảnh để trỏ đúng về backend port 3001
+    const normalizedImageUrl = item.productImageUrl
+      ? item.productImageUrl.startsWith("http")
+        ? item.productImageUrl
+        : `http://localhost:3001${item.productImageUrl}`
+      : "";
+
+    const normalizedItem: ConfiguredProduct = {
+      ...item,
+      productImageUrl: normalizedImageUrl,
+    };
+
     updateItems((current) =>
-      addCartItem(current, item, () => crypto.randomUUID()),
+      addCartItem(current, normalizedItem, () => crypto.randomUUID()),
     );
   }
 

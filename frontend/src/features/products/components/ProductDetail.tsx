@@ -134,13 +134,20 @@ function ProductDetailView({
     setNotice("Đã thêm món vào giỏ hàng.");
   }
 
+  // Xử lý đường dẫn ảnh để tự động trỏ tới backend port 3001 nếu chưa có domain
+  const fullImageUrl = currentProduct.imageUrl
+    ? currentProduct.imageUrl.startsWith("http")
+      ? currentProduct.imageUrl
+      : `http://localhost:3001${currentProduct.imageUrl}`
+    : "";
+
   return (
     <main className="page-shell product-detail-page">
       <Link className="back-link" href="/menu">← Menu</Link>
       <div className="product-detail">
         <div className="product-detail__image">
-          {currentProduct.imageUrl ? (
-            <Image src={currentProduct.imageUrl} alt={currentProduct.name} fill unoptimized sizes="(max-width: 800px) 100vw, 55vw" />
+          {fullImageUrl ? (
+            <Image src={fullImageUrl} alt={currentProduct.name} fill unoptimized sizes="(max-width: 800px) 100vw, 55vw" />
           ) : (
             <span className="product-detail__image-placeholder" aria-hidden="true">BrewLite</span>
           )}
