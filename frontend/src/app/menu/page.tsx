@@ -15,7 +15,7 @@ const CATEGORY_TABS: { id: CategoryFilter; label: string }[] = [
   { id: "TEA", label: "Trà" },
   { id: "CAKE", label: "Bánh" },
 ];
-
+const VALID_CATEGORIES: CategoryFilter[] = ["ALL", "COFFEE", "TEA", "CAKE"];
 const ITEMS_PER_PAGE = 8;
 
 /**
@@ -54,28 +54,24 @@ function MenuContent() {
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
 
-  // Trạng thái phân trang và bộ lọc
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>(() => {
-    if (categoryParam) {
-      const upper = categoryParam.toUpperCase();
-      if (upper === "COFFEE" || upper === "TEA" || upper === "CAKE") {
-        return upper as CategoryFilter;
-      }
-    }
-    return "ALL";
-  });
-  const [searchTerm, setSearchTerm] = useState<string>("");
+// Trạng thái phân trang và bộ lọc
+const [currentPage, setCurrentPage] = useState<number>(1);
+const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>(() => {
+  if (categoryParam) {
+    const upper = categoryParam.toUpperCase() as CategoryFilter;
+    if (VALID_CATEGORIES.includes(upper)) return upper;
+  }
+  return "ALL";
+});
+const [searchTerm, setSearchTerm] = useState<string>("");
 
-  // Đồng bộ khi URL param thay đổi
-  useEffect(() => {
-    if (categoryParam) {
-      const upper = categoryParam.toUpperCase();
-      if (upper === "COFFEE" || upper === "TEA" || upper === "CAKE") {
-        setSelectedCategory(upper as CategoryFilter);
-      }
-    }
-  }, [categoryParam]);
+// Đồng bộ khi URL param thay đổi: Nếu người dùng nhập param rác trên URL -> tự fallback về "ALL"
+useEffect(() => {
+  if (categoryParam) {
+    const upper = categoryParam.toUpperCase() as CategoryFilter;
+    setSelectedCategory(VALID_CATEGORIES.includes(upper) ? upper : "ALL");
+  }
+}, [categoryParam]);
 
   function retry(): void {
     setLoading(true);
@@ -188,8 +184,9 @@ function MenuContent() {
               type="text"
               className="menu-search-input"
               placeholder="Tìm kiếm theo tên món hoặc hương vị..."
+              maxLength={100}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => setSearchTerm(e.target.value.slice(0, 100))}
               aria-label="Tìm kiếm sản phẩm"
             />
             {searchTerm && (
