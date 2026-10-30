@@ -189,15 +189,7 @@ export async function register(input: RegisterInput): Promise<AuthResponse> {
     body: JSON.stringify(input),
   });
 
-  const token = data.accessToken || data.access_token;
-  if (token) {
-    setAccessToken(token);
-  }
-  if (data.user) {
-    setUser(data.user);
-  }
-  notifyAuthChange();
-
+  // Không tự động đăng nhập khi đăng ký thành công, để người dùng tự đăng nhập ở trang login
   return data;
 }
 

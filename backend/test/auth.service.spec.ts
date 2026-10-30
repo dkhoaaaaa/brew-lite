@@ -1,4 +1,4 @@
-import { ConflictException, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import bcrypt from "bcrypt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,6 +100,7 @@ describe("AuthService", () => {
           email: "existing@example.com",
           password: "password123",
           fullName: "Tran Thi",
+          phone: "0901234567",
         }),
       ).rejects.toThrow(ConflictException);
     });
@@ -115,14 +116,20 @@ describe("AuthService", () => {
         email: "thi@example.com",
         passwordHash: hashedPassword,
         fullName: "Tran Thi",
-        phone: null,
-        loyaltyPoints: 50,
+        phone: "0901234567",
+        loyaltyPoints: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
         isActive: true,
       });
 
       const result = await authService.login({
         email: "thi@example.com",
         password: plainPassword,
+      });
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { email: "thi@example.com" },
       });
 
       expect(jwtService.sign).toHaveBeenCalledWith({
@@ -132,15 +139,25 @@ describe("AuthService", () => {
       });
 
       expect(result.accessToken).toBe("mock_jwt_access_token");
-      expect(result.user.id).toBe("10");
       expect(result.user.email).toBe("thi@example.com");
     });
 
+    it("should throw UnauthorizedException if user not found", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        authService.login({
+          email: "notfound@example.com",
+          password: "password123",
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
     it("should throw UnauthorizedException if password does not match", async () => {
-      const hashedPassword = await bcrypt.hash("correctPassword", 10);
+      const hashedPassword = await bcrypt.hash("correct_pwd", 10);
 
       prisma.user.findUnique.mockResolvedValue({
-        id: BigInt(10),
+        id: BigInt(11),
         email: "thi@example.com",
         passwordHash: hashedPassword,
         fullName: "Tran Thi",
@@ -150,28 +167,17 @@ describe("AuthService", () => {
       await expect(
         authService.login({
           email: "thi@example.com",
-          password: "wrongPassword",
+          password: "wrong_pwd",
         }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it("should throw UnauthorizedException if user does not exist", async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-
-      await expect(
-        authService.login({
-          email: "nonexistent@example.com",
-          password: "anyPassword",
-        }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it("should throw UnauthorizedException if user is deactivated", async () => {
-      const hashedPassword = await bcrypt.hash("correctPassword", 10);
+    it("should throw UnauthorizedException if account is inactive", async () => {
+      const hashedPassword = await bcrypt.hash("password123", 10);
 
       prisma.user.findUnique.mockResolvedValue({
-        id: BigInt(10),
-        email: "thi@example.com",
+        id: BigInt(12),
+        email: "inactive@example.com",
         passwordHash: hashedPassword,
         fullName: "Tran Thi",
         isActive: false,
@@ -179,10 +185,40 @@ describe("AuthService", () => {
 
       await expect(
         authService.login({
-          email: "thi@example.com",
-          password: "correctPassword",
+          email: "inactive@example.com",
+          password: "password123",
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe("getProfile", () => {
+    it("should return sanitized user profile", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: BigInt(1),
+        email: "thi@example.com",
+        fullName: "Tran Thi",
+        phone: "0901234567",
+        loyaltyPoints: 50,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        isActive: true,
+      });
+
+      const profile = await authService.getProfile(BigInt(1));
+
+      expect(profile.id).toBe("1");
+      expect(profile.email).toBe("thi@example.com");
+      expect(profile.loyaltyPoints).toBe(50);
+      expect((profile as any).passwordHash).toBeUndefined();
+    });
+
+    it("should throw NotFoundException if user not found", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(authService.getProfile(BigInt(999))).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });
