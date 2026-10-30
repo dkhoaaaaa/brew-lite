@@ -71,10 +71,18 @@ function LoginForm() {
     e.preventDefault();
     setError(null);
     setLoggedOutToast(false);
+
+    // Kiểm tra Email (phải có đuôi @gmail.com)
+    const trimmedEmail = email.trim();
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(trimmedEmail)) {
+      setError("Email phải có đuôi @gmail.com");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await login({ email, password });
+      await login({ email: trimmedEmail, password });
       setSuccess(true);
       redirectTimerRef.current = setTimeout(() => {
         router.push(redirectUrl);
@@ -158,7 +166,7 @@ function LoginForm() {
                   if (loggedOutToast) setLoggedOutToast(false);
                 }}
                 className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
-                placeholder="vidu@email.com"
+                placeholder="vidu@gmail.com"
               />
             </div>
 

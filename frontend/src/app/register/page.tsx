@@ -70,7 +70,14 @@ function RegisterForm() {
       return;
     }
 
-    // 2. Kiểm tra Số điện thoại (phải có đúng 10 chữ số)
+    // 2. Kiểm tra Email (phải có đuôi @gmail.com)
+    const trimmedEmail = email.trim();
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(trimmedEmail)) {
+      setError("Email phải có đuôi @gmail.com");
+      return;
+    }
+
+    // 3. Kiểm tra Số điện thoại (phải có đúng 10 chữ số)
     const trimmedPhone = phone.trim();
     if (!/^[0-9]{10}$/.test(trimmedPhone)) {
       setError("Số điện thoại phải có đúng 10 chữ số");
@@ -195,7 +202,7 @@ function RegisterForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
-              placeholder="vidu@email.com"
+              placeholder="vidu@gmail.com"
             />
           </div>
 

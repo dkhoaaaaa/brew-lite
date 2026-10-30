@@ -9,6 +9,9 @@ import {
 
 export class RegisterDto {
   @IsEmail({}, { message: "Email không hợp lệ" })
+  @Matches(/^[a-zA-Z0-9._%+-]+@gmail\.com$/i, {
+    message: "Email phải có đuôi @gmail.com",
+  })
   email: string;
 
   @IsString({ message: "Mật khẩu phải là chuỗi ký tự" })
@@ -39,6 +42,9 @@ export class RegisterDto {
 
 export class LoginDto {
   @IsEmail({}, { message: "Email không hợp lệ" })
+  @Matches(/^[a-zA-Z0-9._%+-]+@gmail\.com$/i, {
+    message: "Email phải có đuôi @gmail.com",
+  })
   email: string;
 
   @IsString({ message: "Mật khẩu phải là chuỗi ký tự" })
