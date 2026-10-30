@@ -5,45 +5,73 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
-import { MockPaymentDto } from "./dto/mock-payment.dto.js";
-
-const PENDING_TTL_MS = 2 * 60 * 1000; // Đơn PENDING hết hạn sau 2 phút theo yêu cầu
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   /**
-   * Tự động xử lý các đơn hàng đã hết hạn 2 phút:
-   * - Đơn PENDING: Bị xóa khỏi cơ sở dữ liệu.
+   * Tự động xử lý các đơn hàng đã hết hạn sau 2 phút:
+   * - Đơn PENDING chưa gửi tới cổng thanh toán: Bị xóa khỏi cơ sở dữ liệu.
    * - Đơn PAYMENT_FAILED: Được tự động chuyển trạng thái thành CANCELLED (không xóa).
    */
   async cleanupExpiredOrders(userId?: bigint): Promise<void> {
     const now = new Date();
     try {
-      // 1. Đơn PENDING quá hạn 2 phút -> Xóa khỏi database
+      // 1. Đơn PENDING quá hạn -> Xóa nếu chưa được gửi tới VNPay
       const expiredPending = await this.prisma.order.findMany({
         where: {
           status: "PENDING",
           expiresAt: { lt: now },
           ...(userId ? { userId } : {}),
         },
-        select: { id: true },
+        select: {
+          id: true,
+          payments: {
+            where: { provider: "VNPAY_SANDBOX", status: "PENDING" },
+            select: { id: true },
+          },
+        },
       });
 
       if (expiredPending.length > 0) {
-        const pendingIds = expiredPending.map((o) => o.id);
-        await this.prisma.payment.deleteMany({
-          where: { orderId: { in: pendingIds } },
-        });
-        await this.prisma.order.deleteMany({
-          where: { id: { in: pendingIds } },
-        });
+        const noGatewayPayment = expiredPending.filter((order) => !order.payments?.length);
+        const gatewayPayment = expiredPending.filter((order) => Boolean(order.payments?.length));
+        if (noGatewayPayment.length > 0) {
+          const pendingIds = noGatewayPayment.map((order) => order.id);
+          await this.prisma.payment.deleteMany({
+            where: { orderId: { in: pendingIds } },
+          });
+          await this.prisma.order.deleteMany({
+            where: { id: { in: pendingIds } },
+          });
+        }
+        if (gatewayPayment.length > 0) {
+          const pendingIds = gatewayPayment.map((order) => order.id);
+          await this.prisma.$transaction([
+            this.prisma.order.updateMany({
+              where: { id: { in: pendingIds }, status: "PENDING" },
+              data: { status: "CANCELLED" },
+            }),
+            this.prisma.orderStatusHistory.createMany({
+              data: gatewayPayment.map((order) => ({
+                orderId: order.id,
+                oldStatus: "PENDING",
+                newStatus: "CANCELLED",
+                note: "Hết hạn thanh toán tại VNPAY.",
+              })),
+            }),
+          ]);
+        }
       }
 
-      // 2. Đơn PAYMENT_FAILED quá hạn 2 phút -> Đổi trạng thái thành CANCELLED
+      // 2. Đơn PAYMENT_FAILED quá hạn -> Đổi trạng thái thành CANCELLED
       const expiredFailed = await this.prisma.order.findMany({
         where: {
           status: "PAYMENT_FAILED",
@@ -178,7 +206,7 @@ export class OrdersService {
         pointsEarned: 0,
         total: subtotal,
         note: dto.note,
-        expiresAt: new Date(Date.now() + PENDING_TTL_MS),
+        expiresAt: new Date(Date.now() + this.getOrderPaymentExpiryMs()),
         orderItems: { create: itemsData },
         statusHistory: { create: { oldStatus: null, newStatus: "PENDING" } },
       },
@@ -188,12 +216,25 @@ export class OrdersService {
     return this.serializeOrder(order);
   }
 
+  private getOrderPaymentExpiryMs(): number {
+    const minutes = this.config.get<number>("payments.orderExpiryMinutes");
+    if (
+      minutes === undefined ||
+      !Number.isSafeInteger(minutes) ||
+      minutes < 1 ||
+      minutes > 1440
+    ) {
+      throw new Error("Invalid payments.orderExpiryMinutes configuration.");
+    }
+    return minutes * 60 * 1000;
+  }
+
   /**
    * Lấy danh sách đơn hàng của người dùng hiện tại.
-   * Đơn PENDING mới tạo vẫn hiển thị bình thường; đơn quá 2 phút sẽ tự dọn dẹp biến mất.
+   * Đơn PENDING hết hạn sẽ được dọn dẹp hoặc giữ lại nếu đã gửi tới VNPAY.
    */
   async findMyOrders(userId: bigint, statusFilter?: string) {
-    // 1. Tự động dọn dẹp các đơn PENDING của user đã hết hạn quá 2 phút
+    // 1. Dọn dẹp các đơn PENDING của user đã hết hạn thanh toán
     await this.cleanupExpiredOrders(userId);
 
     // 2. Lấy danh sách đơn còn hiệu lực
@@ -219,7 +260,7 @@ export class OrdersService {
 
   /**
    * Lấy chi tiết một đơn hàng theo ID.
-   * Kiểm tra quyền sở hữu và thời hạn 2 phút của đơn PENDING.
+   * Kiểm tra quyền sở hữu và thời hạn của đơn PENDING.
    */
   async findById(orderId: bigint, userId: bigint) {
     const order = await this.prisma.order.findUnique({
@@ -245,14 +286,39 @@ export class OrdersService {
       throw new ForbiddenException("Bạn không có quyền truy cập đơn hàng này.");
     }
 
-    // Nếu đơn PENDING quá 2 phút -> Xóa và báo hết hạn
+    // Giữ lại đơn đã gửi tới cổng thanh toán để callback đã ký có thể được đối soát.
     if (order.status === "PENDING" && order.expiresAt && order.expiresAt < new Date()) {
+      const hasPendingVnpayPayment = order.payments.some(
+        (payment) => payment.provider === "VNPAY_SANDBOX" && payment.status === "PENDING",
+      );
+      if (hasPendingVnpayPayment) {
+        const [cancelledOrder] = await this.prisma.$transaction([
+          this.prisma.order.update({
+            where: { id: order.id },
+            data: { status: "CANCELLED" },
+            include: {
+              orderItems: { include: { toppings: true } },
+              payments: { orderBy: { createdAt: "desc" } },
+              statusHistory: { orderBy: { changedAt: "asc" } },
+            },
+          }),
+          this.prisma.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              oldStatus: "PENDING",
+              newStatus: "CANCELLED",
+              note: "Hết hạn thanh toán tại VNPAY.",
+            },
+          }),
+        ]);
+        return this.serializeOrder(cancelledOrder);
+      }
       await this.prisma.payment.deleteMany({ where: { orderId: order.id } });
       await this.prisma.order.delete({ where: { id: order.id } });
-      throw new NotFoundException("Đơn hàng đã quá hạn thanh toán 2 phút và đã bị hủy.");
+      throw new NotFoundException("Đơn hàng đã hết hạn thanh toán và đã bị hủy.");
     }
 
-    // Nếu đơn PAYMENT_FAILED quá 2 phút -> Đổi trạng thái thành CANCELLED
+    // Nếu đơn PAYMENT_FAILED quá hạn -> Đổi trạng thái thành CANCELLED
     if (order.status === "PAYMENT_FAILED" && order.expiresAt && order.expiresAt < new Date()) {
       const [updatedCancelled] = await this.prisma.$transaction([
         this.prisma.order.update({
@@ -277,155 +343,6 @@ export class OrdersService {
     }
 
     return this.serializeOrder(order);
-  }
-
-  /**
-   * Xử lý Mock Payment phía Backend:
-   * - Nếu thành công: Cập nhật status thành PAID, tạo bản ghi Payment SUCCESS, ghi lịch sử.
-   * - Nếu thất bại: Tạo bản ghi Payment FAILED, giữ nguyên status PENDING để thanh toán lại.
-   */
-  async processMockPayment(orderId: bigint, userId: bigint, dto: MockPaymentDto) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: { payments: true },
-    });
-
-    if (!order) {
-      throw new NotFoundException("Đơn hàng không tồn tại.");
-    }
-
-    if (order.userId !== userId) {
-      throw new ForbiddenException("Bạn không có quyền thanh toán đơn hàng này.");
-    }
-
-    // Nếu đơn hàng đã PAID -> Trả về kết quả thành công (Idempotent)
-    if (order.status === "PAID") {
-      return {
-        outcome: "SIMULATED_SUCCESS",
-        orderId: order.id.toString(),
-        orderCode: order.orderCode,
-        status: "PAID",
-        paymentStatus: "SUCCESS",
-        message: "Đơn hàng đã được thanh toán trước đó.",
-      };
-    }
-
-    if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
-      throw new BadRequestException(
-        `Đơn hàng không ở trạng thái có thể thanh toán (trạng thái hiện tại: ${order.status}).`,
-      );
-    }
-
-    // Kiểm tra hết hạn 2 phút
-    if (order.expiresAt && order.expiresAt < new Date()) {
-      if (order.status === "PENDING") {
-        await this.prisma.payment.deleteMany({ where: { orderId: order.id } });
-        await this.prisma.order.delete({ where: { id: order.id } });
-        throw new BadRequestException("Đơn hàng đã hết hạn thanh toán (quá 2 phút) và đã bị hủy. Vui lòng tạo đơn mới.");
-      } else if (order.status === "PAYMENT_FAILED") {
-        await this.prisma.$transaction([
-          this.prisma.order.update({
-            where: { id: order.id },
-            data: { status: "CANCELLED" },
-          }),
-          this.prisma.orderStatusHistory.create({
-            data: {
-              orderId: order.id,
-              oldStatus: "PAYMENT_FAILED",
-              newStatus: "CANCELLED",
-              note: "Hết hạn thanh toán 2 phút, tự động chuyển sang đã hủy",
-            },
-          }),
-        ]);
-        throw new BadRequestException("Đơn hàng đã hết hạn thanh toán (quá 2 phút) và đã được chuyển sang trạng thái Đã hủy.");
-      }
-    }
-
-    if (dto.outcome === "success") {
-      // Thực hiện cập nhật trong Transaction để đảm bảo tính nhất quán
-      const idempotencyKey = dto.idempotencyKey || `mock_success_${order.id}_${Date.now()}`;
-      const txCode = `MOCK-TX-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
-
-      const [updatedOrder] = await this.prisma.$transaction([
-        this.prisma.order.update({
-          where: { id: order.id },
-          data: { status: "PAID" },
-        }),
-        this.prisma.payment.create({
-          data: {
-            orderId: order.id,
-            idempotencyKey,
-            amount: order.total,
-            method: dto.method,
-            provider: "MOCK_PAYMENT",
-            status: "SUCCESS",
-            transactionCode: txCode,
-            failureReason: null,
-            rawResponse: {
-              outcome: "SIMULATED_SUCCESS",
-              simulation: true,
-              processedAt: new Date().toISOString(),
-            },
-            paidAt: new Date(),
-          },
-        }),
-        this.prisma.orderStatusHistory.create({
-          data: {
-            orderId: order.id,
-            oldStatus: order.status,
-            newStatus: "PAID",
-            note: `Mô phỏng thanh toán thành công qua ${dto.method === "E_WALLET" ? "Ví điện tử" : "Thẻ ngân hàng"}`,
-          },
-        }),
-      ]);
-
-      return {
-        outcome: "SIMULATED_SUCCESS",
-        orderId: updatedOrder.id.toString(),
-        orderCode: updatedOrder.orderCode,
-        status: "PAID",
-        paymentStatus: "SUCCESS",
-        message: "Mô phỏng thanh toán thành công.",
-      };
-    } else {
-      // Khi thất bại: Ghi nhận Payment FAILED và chuyển status đơn hàng thành PAYMENT_FAILED
-      const idempotencyKey = dto.idempotencyKey || `mock_fail_${order.id}_${Date.now()}`;
-      await this.prisma.$transaction([
-        this.prisma.order.update({
-          where: { id: order.id },
-          data: { status: "PAYMENT_FAILED" },
-        }),
-        this.prisma.payment.create({
-          data: {
-            orderId: order.id,
-            idempotencyKey,
-            amount: order.total,
-            method: dto.method,
-            provider: "MOCK_PAYMENT",
-            status: "FAILED",
-            failureReason: "Người dùng mô phỏng thanh toán thất bại.",
-            rawResponse: { outcome: "SIMULATED_FAILURE", simulation: true },
-          },
-        }),
-        this.prisma.orderStatusHistory.create({
-          data: {
-            orderId: order.id,
-            oldStatus: order.status,
-            newStatus: "PAYMENT_FAILED",
-            note: "Mô phỏng thanh toán thất bại",
-          },
-        }),
-      ]);
-
-      return {
-        outcome: "SIMULATED_FAILURE",
-        orderId: order.id.toString(),
-        orderCode: order.orderCode,
-        status: "PAYMENT_FAILED",
-        paymentStatus: "FAILED",
-        message: "Mô phỏng thanh toán thất bại. Vui lòng thử thanh toán lại.",
-      };
-    }
   }
 
   /**

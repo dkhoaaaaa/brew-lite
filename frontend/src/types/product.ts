@@ -31,6 +31,8 @@ export type ConfiguredProduct = {
   toppings: ToppingOption[];
   unitPrice: string;
   quantity: number;
+  sugarPercent?: number | null;
+  icePercent?: number | null;
 };
 
 export type AddToCartHandler = (item: ConfiguredProduct) => void;

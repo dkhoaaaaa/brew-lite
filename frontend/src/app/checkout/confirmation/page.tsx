@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useCart } from "../../../features/cart/cart-store";
 import { formatPrice } from "../../../lib/money";
 import { getOrderById, type CreatedOrderResponse } from "../../../lib/orders-api";
+import {
+  getDisplayText,
+  getOrderStatusLabel,
+  shouldClearCartAfterPayment,
+} from "../../../features/payment/payment-display";
 import "../../../styles/order-confirmation.css";
-
-interface StoredMockPayment {
-  method: "E_WALLET" | "BANK_CARD";
-  outcome: "SIMULATED_SUCCESS" | "SIMULATED_FAILURE";
-  timestamp: string;
-}
 
 export default function OrderConfirmationPage() {
   return (
@@ -19,7 +19,7 @@ export default function OrderConfirmationPage() {
       fallback={
         <main className="oc-page">
           <div className="oc-container">
-            <p className="oc-meta-label" role="status">Đang tải thông tin xác nhận đơn hàng...</p>
+            <p className="oc-meta-label" role="status">Đang tải trạng thái thanh toán...</p>
           </div>
         </main>
       }
@@ -29,84 +29,78 @@ export default function OrderConfirmationPage() {
   );
 }
 
-function isCreatedOrderResponse(value: unknown): value is CreatedOrderResponse {
-  if (typeof value !== "object" || value === null) return false;
-  const order = value as Partial<CreatedOrderResponse>;
-  return (
-    typeof order.id === "string" &&
-    typeof order.orderCode === "string" &&
-    typeof order.status === "string" &&
-    typeof order.total === "number" &&
-    Number.isFinite(order.total) &&
-    Array.isArray(order.items)
-  );
-}
-
 function OrderConfirmationContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
-
+  const { hydrated, clearCart } = useCart();
+  const clearCartRef = useRef(clearCart);
   const [order, setOrder] = useState<CreatedOrderResponse | null>(null);
-  const [paymentInfo, setPaymentInfo] = useState<StoredMockPayment | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    clearCartRef.current = clearCart;
+  }, [clearCart]);
+
+  useEffect(() => {
+    if (!orderId) return;
     let active = true;
-    if (!orderId) {
-      setError("Không tìm thấy mã đơn hàng cần xác nhận.");
-      setLoaded(true);
-      return;
-    }
-
-    // Đọc thông tin payment từ session nếu có
-    try {
-      const storedPaymentRaw = window.sessionStorage.getItem("lastMockPaymentResult");
-      if (storedPaymentRaw) {
-        const parsedPayment = JSON.parse(storedPaymentRaw) as StoredMockPayment;
-        setPaymentInfo(parsedPayment);
-      }
-    } catch {
-      // Ignore
-    }
-
-    // 1. Thử đọc từ sessionStorage
-    try {
-      const storedOrderRaw = window.sessionStorage.getItem("lastCreatedOrder");
-      const parsedOrder: unknown = storedOrderRaw ? JSON.parse(storedOrderRaw) : null;
-
-      if (isCreatedOrderResponse(parsedOrder) && parsedOrder.id === orderId) {
-        setOrder(parsedOrder);
-        setLoaded(true);
-        return;
-      }
-    } catch {
-      // Fallback API
-    }
-
-    // 2. Nếu session không có, gọi API lấy từ Backend
-    getOrderById(orderId)
-      .then((data) => {
-        if (!active) return;
-        setOrder(data);
-        setLoaded(true);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Không tìm thấy dữ liệu đơn hàng.");
-        setLoaded(true);
-      });
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      getOrderById(orderId)
+        .then((currentOrder) => {
+          if (!active) return;
+          setOrder(currentOrder);
+          if (shouldClearCartAfterPayment(currentOrder.status) && hydrated) {
+            clearCartRef.current();
+          }
+          try {
+            window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(currentOrder));
+            if (shouldClearCartAfterPayment(currentOrder.status) && hydrated) {
+              window.sessionStorage.removeItem("lastCreatedOrderRequest");
+              window.sessionStorage.removeItem("lastCreatedOrderId");
+            }
+          } catch {
+            // Backend state remains authoritative when browser storage is unavailable.
+          }
+        })
+        .catch((cause) => {
+          if (active) {
+            setError(cause instanceof Error ? cause.message : "Không thể tải trạng thái đơn hàng.");
+          }
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 0);
 
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
-  }, [orderId]);
+  }, [orderId, attempt, hydrated]);
 
-  if (!loaded) {
+  if (!orderId) {
     return (
       <main className="oc-page">
         <div className="oc-container">
-          <p className="oc-meta-label" role="status">Đang tải thông tin đơn hàng...</p>
+          <section className="oc-empty-state" role="alert">
+            <h2>Chưa xác minh được giao dịch</h2>
+            <p>Không tìm thấy mã đơn hàng cần xác nhận.</p>
+            <Link className="oc-btn oc-btn-secondary" href="/orders">Đơn hàng của tôi</Link>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+  if (loading || !hydrated) {
+    return (
+      <main className="oc-page">
+        <div className="oc-container">
+          <p className="oc-meta-label" role="status">Đang xác minh trạng thái từ backend...</p>
         </div>
       </main>
     );
@@ -116,16 +110,14 @@ function OrderConfirmationContent() {
     return (
       <main className="oc-page">
         <div className="oc-container">
-          <section className="oc-empty-state">
-            <h2>Không tìm thấy thông tin đơn hàng</h2>
-            <p>{error ?? "Phiên thanh toán đã kết thúc hoặc không tồn tại đơn hàng tương ứng."}</p>
-            <div className="oc-actions" style={{ maxWidth: "260px", margin: "0 auto" }}>
-              <Link className="oc-btn oc-btn-primary" href="/orders">
-                Đơn hàng của tôi
-              </Link>
-              <Link className="oc-btn oc-btn-secondary" href="/menu">
-                Xem thực đơn
-              </Link>
+          <section className="oc-empty-state" role="alert">
+            <h2>Chưa xác minh được giao dịch</h2>
+            <p>{error ?? "Không nhận được đơn hàng từ backend."}</p>
+            <div className="oc-actions">
+              <button className="oc-btn oc-btn-primary" onClick={() => setAttempt((value) => value + 1)} type="button">
+                Thử tải lại
+              </button>
+              <Link className="oc-btn oc-btn-secondary" href="/orders">Đơn hàng của tôi</Link>
             </div>
           </section>
         </div>
@@ -133,152 +125,112 @@ function OrderConfirmationContent() {
     );
   }
 
+  const paid = order.status === "PAID";
+  const statusLabel = getOrderStatusLabel(order.status);
+  const payment = order.payments?.[0];
   const paymentMethodLabel =
-    paymentInfo?.method === "BANK_CARD" || order.payments?.[0]?.method === "BANK_CARD"
-      ? "Thẻ ngân hàng (Mô phỏng)"
-      : "Ví điện tử (Mô phỏng)";
-
-  const formattedDate = paymentInfo?.timestamp
-    ? new Date(paymentInfo.timestamp).toLocaleString("vi-VN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : order.payments?.[0]?.paidAt
-    ? new Date(order.payments[0].paidAt).toLocaleString("vi-VN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : new Date().toLocaleString("vi-VN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+    payment?.method === "VNPAY" ? "VNPay Sandbox" : "Chưa xác định";
+  const paidAt = payment?.paidAt
+    ? new Date(payment.paidAt).toLocaleString("vi-VN")
+    : "Chưa có xác nhận thanh toán";
 
   return (
     <main className="oc-page">
       <div className="oc-container">
-        {/* Header với biểu tượng dấu tích tối giản */}
         <header className="oc-header">
-          <div className="oc-status-badge" aria-hidden="true">✓</div>
-          <h1>Thanh toán thành công</h1>
+          <div className="oc-status-badge" aria-hidden="true">{paid ? "✓" : "!"}</div>
+          <h1>{paid ? "Thanh toán thành công" : statusLabel}</h1>
           <p>
-            Cảm ơn bạn đã lựa chọn BrewLite. Đơn hàng đã được xác nhận thanh toán mô phỏng và cập nhật vào hệ thống.
+            {paid
+              ? "VNPay đã gửi kết quả hợp lệ và backend đã cập nhật đơn hàng."
+              : "Kết quả được lấy từ backend; nếu VNPay chưa gửi callback, hãy tải lại sau ít phút."}
           </p>
         </header>
 
         <div className="oc-grid">
-          {/* Cột chính: Danh sách món & Tổng tiền */}
           <section className="oc-card" aria-labelledby="order-items-heading">
             <h2 className="oc-card-title" id="order-items-heading">Danh sách món đã đặt</h2>
-
             <div className="oc-items">
               {order.items.map((item) => (
                 <article className="oc-item" key={item.id}>
                   <div className="oc-item-info">
                     <h3 className="oc-item-name">
-                      {item.quantity} × {item.productName}
+                      {item.quantity} × {getDisplayText(item.productName, "Món")}
                     </h3>
                     <p className="oc-item-meta">
-                      Size: {item.sizeCode} · Đơn giá: {formatPrice(String(item.unitPrice))}
+                      Size: {getDisplayText(item.sizeCode, "Chưa xác định")} · Đơn giá: {formatPrice(String(item.unitPrice))}
                     </p>
-                    {(item.sugarPercent !== undefined || item.icePercent !== undefined) && (
+                    {(item.sugarPercent != null || item.icePercent != null) && (
                       <p className="oc-item-toppings">
-                        {item.sugarPercent !== undefined ? `Đường ${item.sugarPercent}%` : ""}
-                        {item.sugarPercent !== undefined && item.icePercent !== undefined ? " · " : ""}
-                        {item.icePercent !== undefined ? `Đá ${item.icePercent}%` : ""}
+                        {item.sugarPercent != null ? `Đường ${item.sugarPercent}%` : ""}
+                        {item.sugarPercent != null && item.icePercent != null ? " · " : ""}
+                        {item.icePercent != null ? `Đá ${item.icePercent}%` : ""}
                       </p>
                     )}
-                    {Array.isArray(item.toppings) && item.toppings.length > 0 && (
+                    {item.toppings.length > 0 && (
                       <p className="oc-item-toppings">
-                        Topping: {item.toppings.map((t) => `${t.name} (x${t.quantity})`).join(", ")}
+                        Topping: {item.toppings.map((topping) => `${topping.name} (x${topping.quantity})`).join(", ")}
                       </p>
                     )}
-                    {item.note && (
-                      <p className="oc-item-toppings" style={{ fontStyle: "italic" }}>
-                        Ghi chú: {item.note}
-                      </p>
-                    )}
+                    {item.note && <p className="oc-item-toppings">Ghi chú: {item.note}</p>}
                   </div>
-                  <div className="oc-item-price">
-                    {formatPrice(String(item.lineTotal))}
-                  </div>
+                  <div className="oc-item-price">{formatPrice(String(item.lineTotal))}</div>
                 </article>
               ))}
             </div>
-
             <div className="oc-summary-breakdown">
               <div className="oc-summary-row">
-                <span>Tạm tính</span>
-                <span>{formatPrice(String(order.subtotal))}</span>
+                <span>Tạm tính</span><span>{formatPrice(String(order.subtotal))}</span>
               </div>
               {order.discountAmount > 0 && (
                 <div className="oc-summary-row">
-                  <span>Giảm giá</span>
-                  <span>-{formatPrice(String(order.discountAmount))}</span>
+                  <span>Giảm giá</span><span>-{formatPrice(String(order.discountAmount))}</span>
                 </div>
               )}
               <div className="oc-summary-row total-row">
-                <span>Tổng thanh toán</span>
-                <span>{formatPrice(String(order.total))}</span>
+                <span>Tổng thanh toán</span><span>{formatPrice(String(order.total))}</span>
               </div>
             </div>
           </section>
 
-          {/* Cột phải: Thông tin giao dịch & nút hành động */}
           <aside className="oc-sidebar">
             <div className="oc-card">
               <h2 className="oc-card-title">Thông tin giao dịch</h2>
               <div className="oc-meta-list">
                 <div className="oc-meta-row">
                   <span className="oc-meta-label">Mã đơn hàng</span>
-                  <span className="oc-meta-value">{order.orderCode}</span>
+                  <span className="oc-meta-value">{getDisplayText(order.orderCode, "Chưa xác định")}</span>
                 </div>
                 <div className="oc-meta-row">
-                  <span className="oc-meta-label">Trạng thái hệ thống</span>
-                  <div className="oc-status-pill" style={{ background: "#EBF8F2", color: "#22543D", borderColor: "#9AE6B4" }}>
-                    {order.status}
-                  </div>
+                  <span className="oc-meta-label">Trạng thái</span>
+                  <span className="oc-status-pill">{statusLabel}</span>
                 </div>
                 <div className="oc-meta-row">
-                  <span className="oc-meta-label">Phương thức mô phỏng</span>
+                  <span className="oc-meta-label">Phương thức</span>
                   <span className="oc-meta-value">{paymentMethodLabel}</span>
                 </div>
                 <div className="oc-meta-row">
-                  <span className="oc-meta-label">Thời gian hoàn tất</span>
-                  <span className="oc-meta-value" style={{ fontSize: "14px", fontWeight: 400 }}>
-                    {formattedDate}
-                  </span>
+                  <span className="oc-meta-label">Thời gian</span>
+                  <span className="oc-meta-value">{paidAt}</span>
                 </div>
               </div>
             </div>
-
-            {/* Lưu ý thử nghiệm */}
             <div className="oc-disclaimer">
-              <h3 className="oc-disclaimer-title">Lưu ý thử nghiệm</h3>
+              <h3 className="oc-disclaimer-title">Trạng thái giao dịch</h3>
               <p className="oc-disclaimer-text">
-                Đơn hàng đã được lưu và cập nhật trạng thái PAID trong cơ sở dữ liệu. Đây là giao dịch thanh toán mô phỏng trong môi trường phát triển.
+                {paid
+                  ? "Giao dịch đã được xác minh bằng callback VNPay hợp lệ."
+                  : "Không sử dụng dữ liệu trên trình duyệt để đánh dấu đơn hàng đã thanh toán."}
               </p>
             </div>
-
-            {/* Các nút hành động */}
             <div className="oc-actions">
-              <Link className="oc-btn oc-btn-primary" href="/orders">
-                Đơn hàng của tôi
-              </Link>
-              <Link className="oc-btn oc-btn-secondary" href={`/orders/${encodeURIComponent(order.id)}`}>
-                Xem chi tiết đơn hàng
-              </Link>
-              <Link className="oc-btn oc-btn-secondary" href="/menu">
-                Tiếp tục mua sắm
-              </Link>
+              {!paid && (order.status === "PENDING" || order.status === "PAYMENT_FAILED") && (
+                <Link className="oc-btn oc-btn-primary" href={`/checkout?orderId=${encodeURIComponent(order.id)}`}>
+                  Thử thanh toán lại
+                </Link>
+              )}
+              <Link className="oc-btn oc-btn-secondary" href="/orders">Đơn hàng của tôi</Link>
+              <Link className="oc-btn oc-btn-secondary" href="/menu">Tiếp tục mua sắm</Link>
             </div>
           </aside>
         </div>

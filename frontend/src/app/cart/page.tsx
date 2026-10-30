@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useCart } from "../../features/cart/cart-store";
 import { formatPrice, fromMinorUnits, toMinorUnits } from "../../lib/money";
-import { createOrder } from "../../lib/orders-api";
+import {
+  createOrder,
+  getOrderById,
+  type CreatedOrderResponse,
+} from "../../lib/orders-api";
+import { ApiError } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth";
 import { toCreateOrderPayload } from "../../features/cart/cart-logic";
 
@@ -21,7 +26,6 @@ export default function CartPage() {
     increaseItem,
     decreaseItem,
     removeItem,
-    clearCart,
   } = useCart();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -51,9 +55,44 @@ export default function CartPage() {
     submissionLock.current = true;
     setIsSubmitting(true);
     try {
-      const createdOrder = await createOrder(orderPayload, user.id);
-      window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(createdOrder));
-      clearCart();
+      const fingerprint = JSON.stringify(orderPayload);
+      let savedRequest: string | null = null;
+      let savedOrderId: string | null = null;
+      try {
+        savedRequest = window.sessionStorage.getItem("lastCreatedOrderRequest");
+        savedOrderId = window.sessionStorage.getItem("lastCreatedOrderId");
+      } catch {
+        // Continue with a new order if browser storage is unavailable.
+      }
+
+      let createdOrder: CreatedOrderResponse;
+      if (savedRequest === fingerprint && savedOrderId) {
+        let existingOrder: CreatedOrderResponse | null = null;
+        try {
+          existingOrder = await getOrderById(savedOrderId);
+        } catch (cause) {
+          if (!(cause instanceof ApiError) || cause.status !== 404) throw cause;
+        }
+        if (
+          existingOrder &&
+          (existingOrder.status === "PENDING" || existingOrder.status === "PAYMENT_FAILED") &&
+          (!existingOrder.expiresAt || new Date(existingOrder.expiresAt).getTime() > Date.now())
+        ) {
+          createdOrder = existingOrder;
+        } else {
+          createdOrder = await createOrder(orderPayload, user.id);
+        }
+      } else {
+        createdOrder = await createOrder(orderPayload, user.id);
+      }
+
+      try {
+        window.sessionStorage.setItem("lastCreatedOrderRequest", fingerprint);
+        window.sessionStorage.setItem("lastCreatedOrderId", createdOrder.id);
+        window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(createdOrder));
+      } catch {
+        // The server order remains authoritative; checkout can reload it from the API.
+      }
       router.push(`/checkout?orderId=${encodeURIComponent(createdOrder.id)}`);
     } catch (error) {
       setErrorMessage(
@@ -118,6 +157,13 @@ export default function CartPage() {
                 <h2>{item.productName}</h2>
                 <p>{item.size ? `Size ${item.size.sizeCode}` : "Không chọn size"}</p>
                 <p>{item.toppings.length ? item.toppings.map((topping) => topping.name).join(", ") : "Không topping"}</p>
+                {(item.sugarPercent != null || item.icePercent != null) && (
+                  <p>
+                    {item.sugarPercent != null ? `Đường ${item.sugarPercent}%` : ""}
+                    {item.sugarPercent != null && item.icePercent != null ? " · " : ""}
+                    {item.icePercent != null ? `Đá ${item.icePercent}%` : ""}
+                  </p>
+                )}
                 <strong>{formatPrice(item.unitPrice)} / món</strong>
               </div>
               <div className="cart-line__controls">

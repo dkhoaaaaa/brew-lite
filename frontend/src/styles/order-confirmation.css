@@ -205,6 +205,11 @@
   border: 1px solid #DED6CB;
 }
 
+.oc-actions button {
+  cursor: pointer;
+  font: inherit;
+}
+
 /* ─── DISCLAIMER BOX ──────────────────────────────────────────────────── */
 .oc-disclaimer {
   background-color: #FAF8F5;
@@ -300,4 +305,3 @@
   line-height: 1.6;
   margin: 0 0 24px;
 }
-

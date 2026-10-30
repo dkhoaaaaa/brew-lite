@@ -10,7 +10,6 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
-import { MockPaymentDto } from "./dto/mock-payment.dto.js";
 import { OrdersService } from "./orders.service.js";
 
 @Controller("orders")
@@ -64,17 +63,6 @@ export class OrdersController {
   ) {
     const userId = this.getUserId(authHeader, userIdHeader);
     return this.ordersService.findById(BigInt(id), userId);
-  }
-
-  @Post(":id/mock-payment")
-  processMockPayment(
-    @Headers("authorization") authHeader: string | undefined,
-    @Headers("x-user-id") userIdHeader: string | undefined,
-    @Param("id") id: string,
-    @Body() dto: MockPaymentDto,
-  ) {
-    const userId = this.getUserId(authHeader, userIdHeader);
-    return this.ordersService.processMockPayment(BigInt(id), userId, dto);
   }
 
   @Post(":id/cancel")

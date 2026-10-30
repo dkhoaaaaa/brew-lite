@@ -125,12 +125,14 @@ describe("Task 5 cart logic", () => {
       ...baseItem,
       toppings: [{ id: "topping-2", name: "Other", price: "1.00" }],
     };
+    const differentSugar = { ...baseItem, sugarPercent: 30 };
+    const differentIce = { ...baseItem, icePercent: 70 };
 
-    const result = [differentProduct, differentSize, differentTopping].reduce(
+    const result = [differentProduct, differentSize, differentTopping, differentSugar, differentIce].reduce(
       (items, item, index) => addCartItem(items, item, () => `line-${index + 2}`),
       [first],
     );
-    expect(result).toHaveLength(4);
+    expect(result).toHaveLength(6);
   });
 
   it("merges duplicate configurations but keeps different sizes and toppings separate", () => {
@@ -236,6 +238,26 @@ describe("Task 5 cart logic", () => {
         },
       ],
     });
+  });
+
+  it("preserves sugar and ice selections in cart storage and the order DTO payload", async () => {
+    const configured = {
+      ...baseItem,
+      productId: "12",
+      size: { id: "987", sizeCode: "M", extraPrice: "5.00" },
+      toppings: [{ id: "45", name: "Topping", price: "1.25" }],
+      sugarPercent: 30,
+      icePercent: 70,
+    };
+    const added = addCartItem([], configured, () => "preference-line");
+    const payload = toCreateOrderPayload(added);
+
+    expect(parseStoredCart(JSON.stringify(added))).toEqual(added);
+    expect(payload.items[0]).toMatchObject({
+      sugarPercent: 30,
+      icePercent: 70,
+    });
+    expect(await validate(plainToInstance(CreateOrderDto, payload))).toHaveLength(0);
   });
 
   it("produces a payload accepted by the current CreateOrderDto", async () => {

@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { BadRequestException } from "@nestjs/common";
 import { OrdersService } from "../src/modules/orders/orders.service.js";
 import type { CreateOrderDto } from "../src/modules/orders/dto/create-order.dto.js";
 
 const money = (value: number) => ({ toNumber: () => value });
+
+function ordersService(prisma: unknown, expiryMinutes = 2): OrdersService {
+  const config = {
+    get: (key: string) =>
+      key === "payments.orderExpiryMinutes" ? expiryMinutes : undefined,
+  };
+  return new OrdersService(prisma as never, config as never);
+}
 
 // Dữ liệu giả lập thay cho database.
 function buildPrisma(overrides: Record<string, unknown> = {}) {
@@ -115,7 +123,7 @@ const validDto = (): CreateOrderDto => ({
 describe("OrdersService.create", () => {
   it("tính tiền từ giá trong DB và tạo đơn PENDING", async () => {
     const prisma = buildPrisma();
-    const service = new OrdersService(prisma as never);
+    const service = ordersService(prisma);
 
     const result = await service.create(1n, validDto());
 
@@ -127,6 +135,8 @@ describe("OrdersService.create", () => {
     expect(result.orderCode).toMatch(/^BL\d{8}-[0-9A-F]{6}$/);
 
     const data = (prisma.order.create as unknown as Mock).mock.calls[0][0].data;
+    expect(data.expiresAt.getTime()).toBeGreaterThan(Date.now() + 119_000);
+    expect(data.expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 120_000);
     expect(data.statusHistory.create).toEqual({ oldStatus: null, newStatus: "PENDING" });
   });
 
@@ -138,7 +148,7 @@ describe("OrdersService.create", () => {
         ]),
       },
     });
-    const service = new OrdersService(prisma as never);
+    const service = ordersService(prisma);
 
     await expect(service.create(1n, validDto())).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.order.create).not.toHaveBeenCalled();
@@ -148,14 +158,14 @@ describe("OrdersService.create", () => {
     const prisma = buildPrisma({
       productTopping: { findMany: vi.fn().mockResolvedValue([]) },
     });
-    const service = new OrdersService(prisma as never);
+    const service = ordersService(prisma);
 
     await expect(service.create(1n, validDto())).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.order.create).not.toHaveBeenCalled();
   });
 
   it("từ chối khi trùng topping trong cùng một ly", async () => {
-    const service = new OrdersService(buildPrisma() as never);
+    const service = ordersService(buildPrisma());
     const dto = validDto();
     dto.items[0].toppings = [{ toppingId: "1" }, { toppingId: "1" }];
 
@@ -164,21 +174,21 @@ describe("OrdersService.create", () => {
 
   it("từ chối khi món không tồn tại hoặc đã ngừng bán", async () => {
     const prisma = buildPrisma({ product: { findMany: vi.fn().mockResolvedValue([]) } });
-    const service = new OrdersService(prisma as never);
+    const service = ordersService(prisma);
 
     await expect(service.create(1n, validDto())).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("từ chối khi user không tồn tại", async () => {
     const prisma = buildPrisma({ user: { findFirst: vi.fn().mockResolvedValue(null) } });
-    const service = new OrdersService(prisma as never);
+    const service = ordersService(prisma);
 
     await expect(service.create(1n, validDto())).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
 describe("OrdersService.findMyOrders & cleanupExpiredOrders", () => {
-  it("dọn dẹp các đơn PENDING quá 2 phút và trả về danh sách đơn còn hiệu lực", async () => {
+  it("dọn dẹp các đơn PENDING đã hết hạn và trả về danh sách đơn còn hiệu lực", async () => {
     const prisma = buildPrisma({
       order: {
         findMany: vi.fn()
@@ -209,7 +219,7 @@ describe("OrdersService.findMyOrders & cleanupExpiredOrders", () => {
         create: vi.fn().mockResolvedValue({ id: 1n }),
       },
     });
-    const service = new OrdersService(prisma as never);
+    const service = ordersService(prisma);
 
     const result = await service.findMyOrders(1n);
     expect(result).toHaveLength(1);
@@ -219,94 +229,7 @@ describe("OrdersService.findMyOrders & cleanupExpiredOrders", () => {
   });
 });
 
-describe("OrdersService.processMockPayment", () => {
-  it("khi thanh toán thành công: cập nhật status thành PAID và ghi nhận Payment", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL20261025-ABC123",
-          status: "PENDING",
-          total: money(90000),
-          expiresAt: new Date(Date.now() + 100000),
-          payments: [],
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL20261025-ABC123",
-          status: "PAID",
-          total: money(90000),
-        }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    const res = await service.processMockPayment(10n, 1n, {
-      method: "E_WALLET",
-      outcome: "success",
-    });
-
-    expect(res.outcome).toBe("SIMULATED_SUCCESS");
-    expect(res.status).toBe("PAID");
-    expect(res.paymentStatus).toBe("SUCCESS");
-  });
-
-  it("khi thanh toán thất bại: cập nhật PAYMENT_FAILED và lưu Payment FAILED", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL20261025-ABC123",
-          status: "PENDING",
-          total: money(90000),
-          expiresAt: new Date(Date.now() + 100000),
-          payments: [],
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL20261025-ABC123",
-          status: "PAYMENT_FAILED",
-          total: money(90000),
-        }),
-      },
-      payment: {
-        create: vi.fn().mockResolvedValue({ id: 1n }),
-      },
-      orderStatusHistory: {
-        create: vi.fn().mockResolvedValue({ id: 1n }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    const res = await service.processMockPayment(10n, 1n, {
-      method: "BANK_CARD",
-      outcome: "failure",
-    });
-
-    expect(res.outcome).toBe("SIMULATED_FAILURE");
-    expect(res.status).toBe("PAYMENT_FAILED");
-    expect(res.paymentStatus).toBe("FAILED");
-  });
-
-  it("chặn khi user khác cố gắng thanh toán đơn hàng", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 2n, // Đơn thuộc user 2
-          status: "PENDING",
-        }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    await expect(
-      service.processMockPayment(10n, 1n, { method: "E_WALLET", outcome: "success" }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-  });
-
+describe("OrdersService.cancelOrder", () => {
   it("hủy đơn hàng đang PENDING hoặc PAYMENT_FAILED thành CANCELLED", async () => {
     const prisma = buildPrisma({
       order: {
@@ -334,7 +257,7 @@ describe("OrdersService.processMockPayment", () => {
         create: vi.fn().mockResolvedValue({ id: 1n }),
       },
     });
-    const service = new OrdersService(prisma as never);
+    const service = ordersService(prisma);
 
     const cancelled = await service.cancelOrder(10n, 1n);
     expect(cancelled.status).toBe("CANCELLED");

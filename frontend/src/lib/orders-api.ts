@@ -1,4 +1,5 @@
 import { getAccessToken, getUser } from "./auth";
+import { ApiError } from "./api-client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -13,23 +14,23 @@ export interface OrderItemPayload {
   quantity: number;
   sugarPercent?: number;
   icePercent?: number;
-  note?: string;
+  note?: string | null;
   toppings?: OrderItemToppingPayload[];
 }
 
 export interface CreateOrderPayload {
   items: OrderItemPayload[];
-  note?: string;
+  note?: string | null;
 }
 
 export interface CreatedOrderItem {
   id: string;
   productId: string;
   productName: string;
-  sizeCode: string;
-  sugarPercent?: number;
-  icePercent?: number;
-  note?: string;
+  sizeCode: string | null;
+  sugarPercent?: number | null;
+  icePercent?: number | null;
+  note?: string | null;
   quantity: number;
   unitPrice: number;
   lineTotal: number;
@@ -65,7 +66,7 @@ export interface CreatedOrderResponse {
   subtotal: number;
   discountAmount: number;
   total: number;
-  note?: string;
+  note?: string | null;
   expiresAt: string | null;
   createdAt: string;
   items: CreatedOrderItem[];
@@ -73,19 +74,97 @@ export interface CreatedOrderResponse {
   statusHistory?: OrderStatusHistoryItem[];
 }
 
-export interface MockPaymentPayload {
-  method: "E_WALLET" | "BANK_CARD";
-  outcome: "success" | "failure";
-  idempotencyKey?: string;
+export interface CreateVnpayPaymentPayload {
+  orderId: string;
+  idempotencyKey: string;
+  paymentChannel: VnpayPaymentChannel;
 }
 
-export interface MockPaymentApiResponse {
-  outcome: "SIMULATED_SUCCESS" | "SIMULATED_FAILURE";
+export type VnpayPaymentChannel = "VNBANK" | "INTCARD" | "VNPAYQR";
+
+export interface VnpayPaymentResponse {
   orderId: string;
-  orderCode: string;
-  status: string;
-  paymentStatus: string;
-  message: string;
+  checkoutUrl: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCreatedOrderResponse(value: unknown): value is CreatedOrderResponse {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    typeof value.orderCode === "string" &&
+    typeof value.status === "string" &&
+    typeof value.subtotal === "number" &&
+    Number.isFinite(value.subtotal) &&
+    typeof value.discountAmount === "number" &&
+    Number.isFinite(value.discountAmount) &&
+    typeof value.total === "number" &&
+    Number.isFinite(value.total) &&
+    (value.expiresAt === null ||
+      (typeof value.expiresAt === "string" && Number.isFinite(Date.parse(value.expiresAt)))) &&
+    typeof value.createdAt === "string" &&
+    Number.isFinite(Date.parse(value.createdAt)) &&
+    Array.isArray(value.items) &&
+    value.items.every(isCreatedOrderItem) &&
+    (value.payments === undefined ||
+      (Array.isArray(value.payments) && value.payments.every(isOrderPayment)))
+  );
+}
+
+function isOrderPayment(value: unknown): value is OrderPayment {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.method === "string" &&
+    typeof value.status === "string" &&
+    typeof value.amount === "number" &&
+    Number.isFinite(value.amount)
+  );
+}
+
+function isCreatedOrderItem(value: unknown): value is CreatedOrderItem {
+  if (!isRecord(value)) return false;
+  const percentValues = [0, 30, 50, 70, 100];
+  return (
+    typeof value.id === "string" &&
+    typeof value.productId === "string" &&
+    typeof value.productName === "string" &&
+    (typeof value.sizeCode === "string" || value.sizeCode === null) &&
+    (value.sugarPercent === undefined ||
+      value.sugarPercent === null ||
+      (typeof value.sugarPercent === "number" && percentValues.includes(value.sugarPercent))) &&
+    (value.icePercent === undefined ||
+      value.icePercent === null ||
+      (typeof value.icePercent === "number" && percentValues.includes(value.icePercent))) &&
+    typeof value.quantity === "number" &&
+    Number.isSafeInteger(value.quantity) &&
+    typeof value.unitPrice === "number" &&
+    Number.isFinite(value.unitPrice) &&
+    typeof value.lineTotal === "number" &&
+    Number.isFinite(value.lineTotal) &&
+    Array.isArray(value.toppings) &&
+    value.toppings.every(
+      (topping) =>
+        isRecord(topping) &&
+        typeof topping.toppingId === "string" &&
+        typeof topping.name === "string" &&
+        typeof topping.price === "number" &&
+        Number.isFinite(topping.price) &&
+        typeof topping.quantity === "number" &&
+        Number.isSafeInteger(topping.quantity),
+    )
+  );
+}
+
+function parseCreatedOrderResponse(value: unknown): CreatedOrderResponse {
+  if (!isCreatedOrderResponse(value)) {
+    throw new Error("Backend trả về thông tin đơn hàng không hợp lệ.");
+  }
+  return value;
 }
 
 function getAuthHeaders(): HeadersInit {
@@ -133,7 +212,7 @@ export async function createOrder(
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  return parseCreatedOrderResponse(await response.json());
 }
 
 export async function getMyOrders(status?: string): Promise<CreatedOrderResponse[]> {
@@ -158,7 +237,11 @@ export async function getMyOrders(status?: string): Promise<CreatedOrderResponse
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  const result: unknown = await response.json();
+  if (!Array.isArray(result)) {
+    throw new Error("Backend trả về danh sách đơn hàng không hợp lệ.");
+  }
+  return result.map(parseCreatedOrderResponse);
 }
 
 export async function getOrderById(orderId: string): Promise<CreatedOrderResponse> {
@@ -179,24 +262,24 @@ export async function getOrderById(orderId: string): Promise<CreatedOrderRespons
     } catch {
       // Ignore parse error
     }
+    if (response.status === 404) throw new ApiError(errorMessage, response.status);
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  return parseCreatedOrderResponse(await response.json());
 }
 
-export async function executeMockPayment(
-  orderId: string,
-  payload: MockPaymentPayload,
-): Promise<MockPaymentApiResponse> {
-  const response = await fetch(`${API_URL}/orders/${encodeURIComponent(orderId)}/mock-payment`, {
+export async function createVnpayPayment(
+  payload: CreateVnpayPaymentPayload,
+): Promise<VnpayPaymentResponse> {
+  const response = await fetch(`${API_URL}/payments/vnpay`, {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    let errorMessage = `Lỗi thanh toán mô phỏng (${response.status})`;
+    let errorMessage = `Lỗi khởi tạo thanh toán VNPay (${response.status})`;
     try {
       const errorBody = await response.json();
       if (errorBody && errorBody.message) {
@@ -210,7 +293,25 @@ export async function executeMockPayment(
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  const result: unknown = await response.json();
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("orderId" in result) ||
+    result.orderId !== payload.orderId ||
+    !("checkoutUrl" in result) ||
+    typeof result.checkoutUrl !== "string"
+  ) {
+    throw new Error("Backend trả về thông tin thanh toán VNPay không hợp lệ.");
+  }
+  const checkoutUrl = new URL(result.checkoutUrl);
+  if (
+    checkoutUrl.protocol !== "https:" ||
+    checkoutUrl.hostname !== "sandbox.vnpayment.vn"
+  ) {
+    throw new Error("Backend trả về địa chỉ cổng thanh toán không an toàn.");
+  }
+  return { orderId: result.orderId, checkoutUrl: checkoutUrl.toString() };
 }
 
 export async function cancelOrder(orderId: string): Promise<CreatedOrderResponse> {

@@ -1,16 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "../../../lib/auth";
 import { formatPrice } from "../../../lib/money";
 import { cancelOrder, getOrderById, type CreatedOrderResponse } from "../../../lib/orders-api";
+import { getDisplayText } from "../../../features/payment/payment-display";
 import styles from "../../../styles/orders.module.css";
 
 export default function OrderDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className={styles.pageShell}>
+          <div className={styles.container}>
+            <div className={styles.statePanel}>
+              <p className={styles.stateDesc} role="status">Đang tải chi tiết đơn hàng...</p>
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <OrderDetailsContent />
+    </Suspense>
+  );
+}
+
+function OrderDetailsContent() {
   const params = useParams();
-  const router = useRouter();
   const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
   const { isAuthenticated } = useAuth();
   const [order, setOrder] = useState<CreatedOrderResponse | null>(null);
@@ -24,7 +42,7 @@ export default function OrderDetailsPage() {
     try {
       const updated = await cancelOrder(order.id);
       setOrder(updated);
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Không thể hủy đơn hàng.");
     } finally {
       setCancelling(false);
@@ -34,24 +52,26 @@ export default function OrderDetailsPage() {
   useEffect(() => {
     if (!id) return;
     let active = true;
-    setLoading(true);
-    setError(null);
-
-    getOrderById(id)
-      .then((data) => {
-        if (!active) return;
-        setOrder(data);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Không tìm thấy thông tin đơn hàng.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      getOrderById(id)
+        .then((data) => {
+          if (!active) return;
+          setOrder(data);
+        })
+        .catch((err) => {
+          if (!active) return;
+          setError(err instanceof Error ? err.message : "Không tìm thấy thông tin đơn hàng.");
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 0);
 
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [id]);
 
@@ -178,13 +198,13 @@ export default function OrderDetailsPage() {
                         {item.quantity} × {item.productName}
                       </h3>
                       <p style={{ margin: "0 0 2px", fontSize: "13px", color: "#6F6258" }}>
-                        Size: {item.sizeCode} · Đơn giá: {formatPrice(String(item.unitPrice))}
+                        Size: {getDisplayText(item.sizeCode, "Chưa xác định")} · Đơn giá: {formatPrice(String(item.unitPrice))}
                       </p>
-                      {(item.sugarPercent !== null || item.icePercent !== null) && (
+                      {(item.sugarPercent != null || item.icePercent != null) && (
                         <p style={{ margin: "0 0 2px", fontSize: "12.5px", color: "#8C7E73" }}>
-                          {item.sugarPercent !== null ? `Đường ${item.sugarPercent}%` : ""}
-                          {item.sugarPercent !== null && item.icePercent !== null ? " · " : ""}
-                          {item.icePercent !== null ? `Đá ${item.icePercent}%` : ""}
+                          {item.sugarPercent != null ? `Đường ${item.sugarPercent}%` : ""}
+                          {item.sugarPercent != null && item.icePercent != null ? " · " : ""}
+                          {item.icePercent != null ? `Đá ${item.icePercent}%` : ""}
                         </p>
                       )}
                       {item.toppings && item.toppings.length > 0 && (
@@ -277,11 +297,9 @@ export default function OrderDetailsPage() {
                         Phương thức thanh toán
                       </span>
                       <strong>
-                        {latestPayment.method === "E_WALLET"
-                          ? "Ví điện tử (Mô phỏng)"
-                          : latestPayment.method === "BANK_CARD"
-                          ? "Thẻ ngân hàng (Mô phỏng)"
-                          : latestPayment.method}
+                        {latestPayment.method === "VNPAY"
+                          ? "VNPay Sandbox"
+                          : getDisplayText(latestPayment.method, "Chưa xác định")}
                       </strong>
                     </div>
 
@@ -360,4 +378,3 @@ export default function OrderDetailsPage() {
     </main>
   );
 }
-

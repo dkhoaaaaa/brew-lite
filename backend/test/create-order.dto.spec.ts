@@ -32,6 +32,10 @@ describe("CreateOrderDto", () => {
     expect((await errorsOf({ items: [item({ sugarPercent: 40 })] })).length).toBeGreaterThan(0);
   });
 
+  it("từ chối % đá không thuộc 0/30/50/70/100", async () => {
+    expect((await errorsOf({ items: [item({ icePercent: 40 })] })).length).toBeGreaterThan(0);
+  });
+
   it("từ chối id không phải số", async () => {
     expect((await errorsOf({ items: [item({ productId: "abc" })] })).length).toBeGreaterThan(0);
   });

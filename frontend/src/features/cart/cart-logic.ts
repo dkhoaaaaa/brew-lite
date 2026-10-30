@@ -11,6 +11,8 @@ export type CartTotals = {
   totalMinorUnits: number;
 };
 
+const PERCENT_VALUES = [0, 30, 50, 70, 100];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -61,11 +63,18 @@ export function isCartLine(value: unknown): value is CartLine {
     typeof value.quantity === "number" &&
     Number.isSafeInteger(value.quantity) &&
     value.quantity > 0 &&
+    isPreferencePercent(value.sugarPercent) &&
+    isPreferencePercent(value.icePercent) &&
     isProductSizeOption(value.size) &&
     Array.isArray(value.toppings) &&
     value.toppings.every(isToppingOption) &&
     new Set(value.toppings.map((topping) => topping.id)).size === value.toppings.length
   );
+}
+
+function isPreferencePercent(value: unknown): boolean {
+  return value === undefined || value === null ||
+    (typeof value === "number" && PERCENT_VALUES.includes(value));
 }
 
 export function getSafeCartTotals(items: CartLine[]): CartTotals | null {
@@ -117,7 +126,9 @@ function sameConfiguration(first: CartLine, second: ConfiguredProduct): boolean 
   const secondToppings = second.toppings.map((topping) => topping.id).sort();
   return (
     firstToppings.length === secondToppings.length &&
-    firstToppings.every((id, index) => id === secondToppings[index])
+    firstToppings.every((id, index) => id === secondToppings[index]) &&
+    (first.sugarPercent ?? null) === (second.sugarPercent ?? null) &&
+    (first.icePercent ?? null) === (second.icePercent ?? null)
   );
 }
 
@@ -196,6 +207,12 @@ export function toCreateOrderPayload(items: CartLine[]): CreateOrderPayload {
         productId: item.productId,
         productSizeId: item.size.id,
         quantity: item.quantity,
+        ...(item.sugarPercent === undefined || item.sugarPercent === null
+          ? {}
+          : { sugarPercent: item.sugarPercent }),
+        ...(item.icePercent === undefined || item.icePercent === null
+          ? {}
+          : { icePercent: item.icePercent }),
         toppings: item.toppings.map((topping) => ({
           toppingId: topping.id,
           quantity: 1,

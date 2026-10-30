@@ -174,6 +174,25 @@ Sau khi chạy `pnpm dev` và các container khởi động thành công, mở c
 
 Backend cung cấp API nên khi mở địa chỉ gốc có thể hiển thị phản hồi JSON hoặc thông báo từ server thay vì giao diện web.
 
+### Thanh toán VNPay Sandbox
+
+BrewLite tạo URL thanh toán ở backend qua `POST /payments/vnpay`; trình duyệt chỉ chuyển hướng tới VNPay và không thể gửi trạng thái `PAID`. Return URL được backend kiểm tra chữ ký, merchant code, mã giao dịch/đơn và số tiền để hiển thị kết quả, nhưng không cập nhật dữ liệu. Chỉ IPN đã xác minh mới cập nhật trạng thái đơn hàng. Callback lặp được xử lý idempotent.
+
+1. Đăng ký tài khoản merchant trên [VNPay Sandbox](https://sandbox.vnpayment.vn/devreg/) và nhận `TmnCode`/`Hash Secret` do VNPay cấp.
+2. Đặt các giá trị đó vào `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET` trong `.env` ở thư mục gốc. Không đặt credentials trong `NEXT_PUBLIC_*`, không commit `.env`.
+3. Đặt `VNPAY_RETURN_URL` thành URL HTTPS công khai của backend kết thúc bằng `/payments/vnpay/return`. Đặt `VNPAY_IPN_URL` thành URL HTTPS công khai kết thúc bằng `/payments/vnpay/ipn`, rồi đăng ký chính URL IPN này với VNPay. Với phát triển local, cần một tunnel HTTPS trỏ tới backend; `localhost` không thể nhận IPN từ VNPay.
+4. `VNPAY_PAYMENT_URL` mặc định là sandbox `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`; `FRONTEND_URL` mặc định `http://localhost:3000`.
+5. `ORDER_PAYMENT_EXPIRY_MINUTES` mặc định là `2` phút, dùng chung thời hạn cho đơn hàng và URL VNPay. Chỉ thay biến này khi được thống nhất.
+6. Khởi động lại backend sau khi cập nhật cấu hình. Khi credentials hoặc IPN URL còn thiếu, backend từ chối khởi tạo giao dịch; không có giao dịch giả thay thế.
+
+Luồng tích hợp theo [tài liệu chính thức VNPay PAY](https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html): tạo URL redirect, cấu hình Return URL và IPN; amount gửi đi là VND nhân 100, chữ ký được tạo/kiểm tra bằng HMAC-SHA512. Checkout hỗ trợ `VNBANK` (thẻ ATM/tài khoản ngân hàng nội địa), `INTCARD` (thẻ quốc tế) và `VNPAYQR` (quét QR); tài khoản merchant có thể giới hạn phương thức khả dụng. BrewLite hiện không tích hợp MoMo. API callback và dữ liệu thanh toán không lưu thông tin thẻ.
+
+Đơn hàng giữ trạng thái chờ thanh toán tối đa 2 phút. Giỏ hàng chỉ được xóa sau khi trang xác nhận tải lại từ API và nhận trạng thái `PAID` từ backend.
+
+### Tùy chỉnh đồ uống
+
+Chi tiết sản phẩm cho phép chọn mức đường và đá. Giá trị được truyền theo các trường hiện có `sugarPercent` và `icePercent` trong DTO tạo đơn; để nguyên “Theo công thức” sẽ không gửi giá trị tùy chỉnh. Lựa chọn đường/đá là một phần cấu hình dòng giỏ hàng nên các món khác lựa chọn không bị gộp.
+
 ### 3.7. Chạy những lần tiếp theo
 
 Từ root, chỉ cần:

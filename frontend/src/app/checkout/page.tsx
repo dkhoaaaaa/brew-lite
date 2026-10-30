@@ -1,22 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Toast } from "../../components/Toast";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useCart } from "../../features/cart/cart-store";
 import {
-  isMockPaymentMethod,
-  type MockPaymentMethod,
-  type MockPaymentOutcome,
-  type MockPaymentResult,
-} from "../../features/payment/mock-payment";
-import {
-  executeMockPayment,
+  cancelOrder,
+  createVnpayPayment,
   getOrderById,
   type CreatedOrderResponse,
+  type VnpayPaymentChannel,
 } from "../../lib/orders-api";
 import { formatPrice } from "../../lib/money";
+import {
+  getDisplayText,
+  getOrderStatusLabel,
+  getPaymentStatusLabel,
+} from "../../features/payment/payment-display";
 
 export default function CheckoutPage() {
   return (
@@ -32,386 +32,264 @@ export default function CheckoutPage() {
   );
 }
 
-function isCreatedOrderResponse(value: unknown): value is CreatedOrderResponse {
-  if (typeof value !== "object" || value === null) return false;
-  const order = value as Partial<CreatedOrderResponse>;
-  return (
-    typeof order.id === "string" &&
-    typeof order.orderCode === "string" &&
-    typeof order.status === "string" &&
-    typeof order.total === "number" && Number.isFinite(order.total) &&
-    Array.isArray(order.items)
-  );
-}
-
 function CheckoutContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
   const { hydrated } = useCart();
-  const [method, setMethod] = useState<MockPaymentMethod | null>(null);
-  const [outcome, setOutcome] = useState<MockPaymentOutcome>("success");
-  const [result, setResult] = useState<MockPaymentResult | null>(null);
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ title: string; message?: string } | null>(null);
-  const [createdOrder, setCreatedOrder] = useState<CreatedOrderResponse | null>(null);
+  const [order, setOrder] = useState<CreatedOrderResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [orderError, setOrderError] = useState<string | null>(null);
-  const [orderSnapshotLoaded, setOrderSnapshotLoaded] = useState(false);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
+  const [paymentChannel, setPaymentChannel] = useState<VnpayPaymentChannel>("VNBANK");
   const submissionLock = useRef(false);
+  const idempotencyKey = useRef<string | null>(null);
+  const timeLeft = order?.expiresAt && currentTime !== null
+    ? Math.max(0, Math.floor((new Date(order.expiresAt).getTime() - currentTime) / 1000))
+    : null;
 
-  useEffect(() => {
-    let active = true;
+  const loadOrder = useCallback(async () => {
     if (!orderId) {
-      setOrderError("Không có mã đơn được backend xác nhận trong phiên này.");
-      setOrderSnapshotLoaded(true);
+      setOrderError("Không có mã đơn hàng để tải.");
+      setLoading(false);
       return;
     }
 
-    // 1. Thử đọc từ sessionStorage
+    setLoading(true);
+    setOrderError(null);
     try {
-      const stored = window.sessionStorage.getItem("lastCreatedOrder");
-      const parsed: unknown = stored ? JSON.parse(stored) : null;
-      if (isCreatedOrderResponse(parsed) && parsed.id === orderId) {
-        if (parsed.status !== "PENDING" && parsed.status !== "PAYMENT_FAILED") {
-          setOrderError(`Đơn hàng này đang ở trạng thái ${parsed.status}, không thể tiếp tục thanh toán.`);
-        } else {
-          setCreatedOrder(parsed);
-        }
-        setOrderSnapshotLoaded(true);
-        return;
+      const currentOrder = await getOrderById(orderId);
+      setOrder(currentOrder);
+      try {
+        window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(currentOrder));
+      } catch {
+        // The API response is sufficient to continue if browser storage is unavailable.
       }
-    } catch {
-      // Bỏ qua lỗi session và fallback qua gọi API
+      if (currentOrder.status === "PAYMENT_FAILED") {
+        idempotencyKey.current = null;
+      }
+    } catch (cause) {
+      setOrderError(cause instanceof Error ? cause.message : "Không thể tải đơn hàng.");
+    } finally {
+      setLoading(false);
     }
-
-    // 2. Nếu không có trong sessionStorage (người dùng thoát trang rồi vào lại), gọi API lấy từ Backend!
-    getOrderById(orderId)
-      .then((order) => {
-        if (!active) return;
-        if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
-          setOrderError(`Đơn hàng #${order.orderCode} đã ở trạng thái ${order.status}, không thể thanh toán tiếp.`);
-        } else {
-          setCreatedOrder(order);
-          // Lưu lại vào session
-          window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(order));
-        }
-        setOrderSnapshotLoaded(true);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setOrderError(err instanceof Error ? err.message : "Không tìm thấy thông tin đơn hàng hoặc đơn đã hết hạn.");
-        setOrderSnapshotLoaded(true);
-      });
-
-    return () => {
-      active = false;
-    };
   }, [orderId]);
 
-  // Bộ đếm ngược thời gian thanh toán (2 phút)
   useEffect(() => {
-    if (
-      !createdOrder?.expiresAt ||
-      (createdOrder.status !== "PENDING" && createdOrder.status !== "PAYMENT_FAILED")
-    ) {
-      setTimeLeft(null);
-      return;
-    }
+    const timer = window.setTimeout(() => void loadOrder(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadOrder, loadAttempt]);
 
-    const expiresAtMs = new Date(createdOrder.expiresAt).getTime();
-
-    const updateTimer = () => {
-      const remaining = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
-      setTimeLeft(remaining);
-      if (remaining <= 0) {
-        setOrderError("Đơn hàng đã hết hạn thanh toán (quá 2 phút) và đã bị hủy. Vui lòng tạo đơn mới.");
-      }
+  useEffect(() => {
+    const initialTimer = window.setTimeout(() => setCurrentTime(Date.now()), 0);
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
     };
+  }, []);
 
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [createdOrder]);
+  const isExpired = timeLeft !== null && timeLeft <= 0;
+  const canPay =
+    order?.status === "PENDING" || order?.status === "PAYMENT_FAILED";
+  const hasPendingPayment = order?.payments?.some(
+    (payment) => payment.status === "PENDING",
+  ) ?? false;
 
-  const formatCountdown = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-  };
-
-  async function submitMockPayment() {
-    if (
-      submissionLock.current ||
-      !createdOrder ||
-      (createdOrder.status !== "PENDING" && createdOrder.status !== "PAYMENT_FAILED")
-    ) {
-      return;
-    }
-    if (timeLeft !== null && timeLeft <= 0) {
-      setError("Đơn hàng đã hết hạn thanh toán.");
-      return;
-    }
-    if (!isMockPaymentMethod(method)) {
-      setError("Vui lòng chọn phương thức thanh toán mô phỏng.");
-      setResult(null);
-      return;
-    }
+  async function submitPayment() {
+    if (submissionLock.current || !order || !canPay || isExpired) return;
 
     submissionLock.current = true;
     setProcessing(true);
     setError(null);
-    setResult(null);
-
+    idempotencyKey.current ??= crypto.randomUUID();
     try {
-      // Gọi API Mock Payment Backend thật để lưu vào PostgreSQL
-      const paymentResult = await executeMockPayment(createdOrder.id, {
-        method,
-        outcome,
+      const payment = await createVnpayPayment({
+        orderId: order.id,
+        idempotencyKey: idempotencyKey.current,
+        paymentChannel,
       });
-
-      if (paymentResult.outcome === "SIMULATED_SUCCESS") {
-        // Lưu kết quả mô phỏng vào sessionStorage
-        const mockPaymentRecord = {
-          method,
-          outcome: paymentResult.outcome,
-          timestamp: new Date().toISOString(),
-        };
-        try {
-          window.sessionStorage.setItem("lastMockPaymentResult", JSON.stringify(mockPaymentRecord));
-          window.sessionStorage.setItem(
-            "lastCreatedOrder",
-            JSON.stringify({ ...createdOrder, status: "PAID" }),
-          );
-        } catch {
-          // Bỏ qua lỗi sessionStorage nếu browser ở chế độ riêng tư giới hạn
-        }
-
-        // Tự động chuyển hướng sang Order Confirmation Page
-        router.push(`/checkout/confirmation?orderId=${encodeURIComponent(createdOrder.id)}`);
-      } else {
-        // Mô phỏng thất bại: cập nhật trạng thái đơn thành PAYMENT_FAILED
-        const updatedFailedOrder = { ...createdOrder, status: "PAYMENT_FAILED" };
-        setCreatedOrder(updatedFailedOrder);
-        try {
-          window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(updatedFailedOrder));
-        } catch {
-          // Ignore
-        }
-
-        setToast({
-          title: "Thanh toán không thành công",
-          message: paymentResult.message || "Giao dịch mô phỏng thất bại. Vui lòng thử thanh toán lại hoặc chọn phương thức khác.",
-        });
-        setResult({
-          outcome: "SIMULATED_FAILURE",
-          message: paymentResult.message,
-        });
-      }
-    } catch (err: any) {
-      const msg = err instanceof Error ? err.message : "Không thể chạy mô phỏng lúc này. Vui lòng thử lại.";
-      setError(msg);
-      setToast({
-        title: "Có lỗi xảy ra",
-        message: msg,
-      });
-    } finally {
-      submissionLock.current = false;
+      window.location.assign(payment.checkoutUrl);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không thể khởi tạo thanh toán VNPay.");
       setProcessing(false);
+      submissionLock.current = false;
     }
   }
 
-  if (!hydrated || !orderSnapshotLoaded) {
-    return <main className="page-shell"><p className="state-message" role="status">Đang tải thông tin thanh toán...</p></main>;
+  async function cancelPendingOrder() {
+    if (!order || cancelling) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      const cancelled = await cancelOrder(order.id);
+      setOrder(cancelled);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không thể hủy đơn hàng.");
+    } finally {
+      setCancelling(false);
+    }
   }
 
-  if (orderError || !createdOrder) {
+  if (!hydrated || loading) {
     return (
       <main className="page-shell">
-        <section className="state-panel">
-          <p className="eyebrow">Chưa có đơn được xác nhận</p>
-          <h1>Chưa thể tiếp tục checkout.</h1>
-          <p>{orderError ?? "Không tìm thấy phản hồi tạo đơn từ backend."}</p>
-          <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
-            <Link className="button button--dark" href="/cart">Quay lại giỏ hàng</Link>
-            <Link className="button" style={{ border: "1px solid #DED6CB", background: "white" }} href="/orders">Xem đơn hàng của tôi</Link>
+        <p className="state-message" role="status">Đang tải trạng thái đơn hàng từ hệ thống...</p>
+      </main>
+    );
+  }
+
+  if (orderError || !order) {
+    return (
+      <main className="page-shell">
+        <section className="state-panel" role="alert">
+          <p className="eyebrow">Chưa tải được thông tin đơn</p>
+          <h1>Chưa thể tiếp tục thanh toán.</h1>
+          <p>{orderError ?? "Không nhận được đơn hàng từ backend."}</p>
+          <div className="checkout-actions">
+            <button className="button button--dark" onClick={() => setLoadAttempt((count) => count + 1)} type="button">
+              Thử tải lại
+            </button>
+            <Link className="button" href="/cart">Quay lại giỏ hàng</Link>
           </div>
         </section>
       </main>
     );
   }
 
-  const isExpired = timeLeft !== null && timeLeft <= 0;
-
   return (
     <main className="page-shell checkout-page">
       <Link className="back-link" href="/cart">← Giỏ hàng</Link>
       <header className="checkout-heading">
-        <p className="eyebrow">BrewLite · checkout thử nghiệm</p>
+        <p className="eyebrow">BrewLite · VNPay Sandbox</p>
         <h1>Hoàn tất thanh toán</h1>
-        <p>Đây là luồng thanh toán mô phỏng kết nối database thật. Đơn hàng sẽ chuyển sang trạng thái PAID khi hoàn tất.</p>
-        
-        {/* Bộ đếm ngược thời gian thanh toán 2 phút */}
-        {timeLeft !== null && (
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              marginTop: "12px",
-              padding: "6px 14px",
-              borderRadius: "6px",
-              backgroundColor: isExpired ? "#FDE8E8" : "#F5EFE6",
-              border: `1px solid ${isExpired ? "#F8B4B4" : "#DED6CB"}`,
-              fontSize: "13.5px",
-              fontWeight: 600,
-              color: isExpired ? "#9B1C1C" : "#5C4738",
-            }}
-          >
-            <span>Thời gian giữ đơn còn lại:</span>
-            <strong style={{ fontFamily: "monospace", fontSize: "15px" }}>
-              {formatCountdown(timeLeft)}
-            </strong>
-          </div>
-        )}
+        <p>
+          Bạn sẽ được chuyển đến cổng VNPay để chọn phương thức khả dụng như thẻ/ngân hàng hoặc VNPay QR.
+          BrewLite chỉ xác nhận thanh toán sau khi backend xác minh IPN đã ký.
+        </p>
       </header>
 
       <div className="checkout-layout">
         <section className="checkout-options">
           <div className="checkout-order-state">
-            <span>Mã đơn từ backend</span>
-            <strong>{createdOrder.orderCode}</strong>
-            <span>Trạng thái đơn từ backend</span>
-            <strong>{createdOrder.status}</strong>
-            <span>Tổng đơn từ backend</span>
-            <strong>{formatPrice(String(createdOrder.total))}</strong>
+            <span>Mã đơn</span>
+            <strong>{getDisplayText(order.orderCode, "Chưa xác định")}</strong>
+            <span>Trạng thái đơn</span>
+            <strong>{getOrderStatusLabel(order.status)}</strong>
+            <span>Trạng thái thanh toán</span>
+            <strong>{getPaymentStatusLabel(order)}</strong>
+            <span>Tổng thanh toán</span>
+            <strong>{formatPrice(String(order.total))}</strong>
           </div>
-
-          <fieldset className="option-group">
-            <legend>Phương thức mô phỏng</legend>
-            <div className="payment-methods">
-              <label className="payment-method">
-                <input
-                  checked={method === "E_WALLET"}
-                  disabled={isExpired || processing}
-                  name="payment-method"
-                  onChange={() => {
-                    setMethod("E_WALLET");
-                    setError(null);
-                    setResult(null);
-                  }}
-                  type="radio"
-                />
-                <span className="payment-method__icon" aria-hidden="true">◉</span>
-                <span><strong>Ví điện tử</strong><small>Chỉ mô phỏng</small></span>
-              </label>
-              <label className="payment-method">
-                <input
-                  checked={method === "BANK_CARD"}
-                  disabled={isExpired || processing}
-                  name="payment-method"
-                  onChange={() => {
-                    setMethod("BANK_CARD");
-                    setError(null);
-                    setResult(null);
-                  }}
-                  type="radio"
-                />
-                <span className="payment-method__icon" aria-hidden="true">▤</span>
-                <span><strong>Thẻ ngân hàng</strong><small>Không nhập số thẻ</small></span>
-              </label>
-            </div>
-          </fieldset>
-
-          <fieldset className="option-group">
-            <legend>Kết quả mô phỏng</legend>
-            <div aria-label="Kết quả thanh toán giả lập" className="outcome-toggle" role="group">
-              <button
-                aria-pressed={outcome === "success"}
-                className={outcome === "success" ? "is-selected" : ""}
-                disabled={isExpired || processing}
-                onClick={() => {
-                  setOutcome("success");
-                  setResult(null);
-                  setError(null);
-                }}
-                type="button"
-              >
-                Thành công
-              </button>
-              <button
-                aria-pressed={outcome === "failure"}
-                className={outcome === "failure" ? "is-selected" : ""}
-                disabled={isExpired || processing}
-                onClick={() => {
-                  setOutcome("failure");
-                  setResult(null);
-                  setError(null);
-                }}
-                type="button"
-              >
-                Thất bại
-              </button>
-            </div>
-          </fieldset>
-
-          <button
-            className="button button--accent checkout-submit"
-            disabled={
-              processing ||
-              !method ||
-              (createdOrder.status !== "PENDING" && createdOrder.status !== "PAYMENT_FAILED") ||
-              isExpired
-            }
-            onClick={submitMockPayment}
-            type="button"
-          >
-            {processing ? "Đang xử lý..." : isExpired ? "Đơn đã hết hạn" : result?.outcome === "SIMULATED_FAILURE" || createdOrder.status === "PAYMENT_FAILED" ? "Thử lại mô phỏng" : "Chạy Mock Payment"}
-          </button>
-          {error && <p className="payment-result payment-result--failure" role="alert">{error}</p>}
-          {(result?.outcome === "SIMULATED_FAILURE" || createdOrder.status === "PAYMENT_FAILED") && (
-            <section
-              aria-live="polite"
-              className="payment-result payment-result--failure"
-              role="status"
-            >
-              <strong>Kết quả mô phỏng: thất bại</strong>
-              <p>{result?.message || "Lần thanh toán trước không thành công."}</p>
-              <small>Đơn hàng chuyển sang trạng thái PAYMENT_FAILED. Bạn có thể chọn lại phương thức và thử lại trước khi hết thời gian 2 phút.</small>
-            </section>
+          {timeLeft !== null && canPay && (
+            <p className="state-message" role="status">
+              Thời gian thanh toán còn {Math.floor(timeLeft / 60)}:
+              {String(timeLeft % 60).padStart(2, "0")}
+            </p>
           )}
-          {createdOrder.status !== "PENDING" && createdOrder.status !== "PAYMENT_FAILED" && (
+
+          {error && <p className="payment-result payment-result--failure" role="alert">{error}</p>}
+
+          {canPay ? (
+            <>
+              {hasPendingPayment && (
+                <p className="state-message" role="status">
+                  Đơn đang có yêu cầu VNPay chờ xử lý. Hãy tiếp tục giao dịch đó; không tạo thêm yêu cầu thanh toán.
+                </p>
+              )}
+              <fieldset className="checkout-payment-methods">
+                <legend>Chọn cách thanh toán qua VNPay</legend>
+                {([
+                  ["VNBANK", "Thẻ ATM / tài khoản ngân hàng nội địa"],
+                  ["INTCARD", "Thẻ thanh toán quốc tế"],
+                  ["VNPAYQR", "VNPay QR"],
+                ] as const).map(([channel, label]) => (
+                  <label key={channel}>
+                    <input
+                      checked={paymentChannel === channel}
+                      disabled={processing || cancelling || isExpired || hasPendingPayment}
+                      name="paymentChannel"
+                      onChange={() => {
+                        setPaymentChannel(channel);
+                        idempotencyKey.current = null;
+                      }}
+                      type="radio"
+                      value={channel}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </fieldset>
+              <div className="checkout-payment-actions">
+                <button
+                  className="button button--accent checkout-submit"
+                  disabled={processing || cancelling || isExpired}
+                  onClick={submitPayment}
+                  type="button"
+                >
+                  {processing
+                    ? "Đang kết nối VNPay..."
+                    : isExpired
+                      ? "Đơn đã hết hạn"
+                      : "Tiếp tục thanh toán"}
+                </button>
+                <button
+                  className="text-button"
+                  disabled={processing || cancelling}
+                  onClick={cancelPendingOrder}
+                  type="button"
+                >
+                  {cancelling ? "Đang hủy..." : "Hủy đơn hàng"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="payment-result" role="status">
+              {orderStatusDescription(order.status)}
+            </p>
+          )}
+          {isExpired && (
             <p className="payment-result payment-result--failure" role="status">
-              Đơn hàng không ở trạng thái có thể chạy thanh toán.
+              Đơn đã hết thời hạn thanh toán. Hãy tải lại trạng thái trước khi thử lại.
             </p>
           )}
         </section>
 
         <aside className="checkout-summary">
-          <p className="eyebrow">Tóm tắt giỏ hàng</p>
-          {createdOrder.items.map((item) => (
+          <p className="eyebrow">Chi tiết đơn hàng</p>
+          {order.items.map((item) => (
             <div className="checkout-summary__line" key={item.id}>
-              <span>{item.quantity} × {item.productName} (Size {item.sizeCode})</span>
+              <div>
+                <span>{item.quantity} × {getDisplayText(item.productName, "Món")}</span>
+                <small>
+                  Size {getDisplayText(item.sizeCode, "Chưa xác định")}
+                  {item.sugarPercent != null ? ` · Đường ${item.sugarPercent}%` : ""}
+                  {item.icePercent != null ? ` · Đá ${item.icePercent}%` : ""}
+                  {item.toppings.length > 0
+                    ? ` · ${item.toppings.map((topping) => topping.name).filter(Boolean).join(", ")}`
+                    : ""}
+                </small>
+              </div>
               <strong>{formatPrice(String(item.lineTotal))}</strong>
             </div>
           ))}
           <div className="checkout-summary__total">
             <span>Tổng cộng</span>
-            <strong>{formatPrice(String(createdOrder.total))}</strong>
+            <strong>{formatPrice(String(order.total))}</strong>
           </div>
-          <p>Đơn hàng được lưu trên hệ thống. Sau 2 phút nếu không hoàn tất thanh toán, đơn sẽ tự động bị hủy.</p>
+          <p>Giỏ hàng vẫn được giữ cho đến khi backend xác nhận thanh toán thành công.</p>
         </aside>
       </div>
-
-      {/* Toast thông báo lỗi khi mô phỏng thất bại */}
-      {toast && (
-        <Toast
-          title={toast.title}
-          message={toast.message}
-          onClose={() => setToast(null)}
-        />
-      )}
     </main>
   );
+}
+
+function orderStatusDescription(status: string): string {
+  if (status === "PAID") return "Backend đã xác nhận khoản thanh toán.";
+  if (status === "PAYMENT_FAILED") return "Giao dịch thất bại. Bạn có thể thử thanh toán lại từ trang này.";
+  if (status === "CANCELLED") return "Đơn hàng đã bị hủy.";
+  return "Trạng thái thanh toán đang chờ backend xác nhận.";
 }

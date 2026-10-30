@@ -12,6 +12,7 @@ import type {
 } from "../../../types/product";
 import { SizeSelector } from "./SizeSelector";
 import { ToppingSelector } from "./ToppingSelector";
+import { PreferenceSelector } from "./PreferenceSelector";
 
 export function ProductDetail({
   productId,
@@ -39,6 +40,8 @@ function ProductDetailView({
   const [product, setProduct] = useState<ProductDetailData | null>(null);
   const [selectedSizeId, setSelectedSizeId] = useState<string | null>(null);
   const [selectedToppingIds, setSelectedToppingIds] = useState<string[]>([]);
+  const [sugarPercent, setSugarPercent] = useState<number | null>(null);
+  const [icePercent, setIcePercent] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -130,6 +133,8 @@ function ProductDetailView({
       toppings: selectedToppings,
       unitPrice,
       quantity: 1,
+      sugarPercent,
+      icePercent,
     });
     setNotice("Đã thêm món vào giỏ hàng.");
   }
@@ -163,6 +168,12 @@ function ProductDetailView({
             toppings={product.toppings}
             selectedToppingIds={selectedToppingIds}
             onChange={setSelectedToppingIds}
+          />
+          <PreferenceSelector
+            sugarPercent={sugarPercent}
+            icePercent={icePercent}
+            onSugarChange={setSugarPercent}
+            onIceChange={setIcePercent}
           />
 
           <div className="purchase-row">
