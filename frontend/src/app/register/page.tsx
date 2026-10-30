@@ -72,8 +72,13 @@ function RegisterForm() {
 
     // 2. Kiểm tra Email (phải có đuôi @gmail.com)
     const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError("Vui lòng nhập gmail của bạn");
+      return;
+    }
+
     if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(trimmedEmail)) {
-      setError("Email phải có đuôi @gmail.com");
+      setError("Gmail phải có định dạng @gmail.com");
       return;
     }
 
@@ -84,14 +89,14 @@ function RegisterForm() {
       return;
     }
 
-    // 3. Kiểm tra Mật khẩu (phải có ít nhất 6 chữ số)
+    // 4. Kiểm tra Mật khẩu (phải có ít nhất 6 chữ số)
     const digitCount = (password.match(/[0-9]/g) || []).length;
     if (password.length < 6 || digitCount < 6) {
       setError("Mật khẩu phải có ít nhất 6 chữ số");
       return;
     }
 
-    // 4. Kiểm tra Xác nhận mật khẩu
+    // 5. Kiểm tra Xác nhận mật khẩu
     if (password !== confirmPassword) {
       setError("Mật khẩu xác nhận không khớp");
       return;
@@ -102,7 +107,7 @@ function RegisterForm() {
     try {
       await register({
         fullName: trimmedFullName,
-        email: email.trim(),
+        email: trimmedEmail,
         phone: trimmedPhone,
         password,
       });
@@ -166,7 +171,7 @@ function RegisterForm() {
           </div>
         )}
 
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+        <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
           <div>
             <label
               htmlFor="fullName"
@@ -178,7 +183,6 @@ function RegisterForm() {
               id="fullName"
               name="fullName"
               type="text"
-              required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
@@ -198,7 +202,6 @@ function RegisterForm() {
               name="email"
               type="email"
               autoComplete="email"
-              required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
@@ -217,7 +220,6 @@ function RegisterForm() {
               id="phone"
               name="phone"
               type="tel"
-              required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
@@ -236,7 +238,6 @@ function RegisterForm() {
               id="password"
               name="password"
               type="password"
-              required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
@@ -255,7 +256,6 @@ function RegisterForm() {
               id="confirmPassword"
               name="confirmPassword"
               type="password"
-              required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"

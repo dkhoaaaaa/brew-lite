@@ -72,10 +72,19 @@ function LoginForm() {
     setError(null);
     setLoggedOutToast(false);
 
-    // Kiểm tra Email (phải có đuôi @gmail.com)
     const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError("Vui lòng nhập gmail của bạn");
+      return;
+    }
+
     if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(trimmedEmail)) {
-      setError("Email phải có đuôi @gmail.com");
+      setError("Gmail phải có định dạng @gmail.com");
+      return;
+    }
+
+    if (!password.trim()) {
+      setError("Vui lòng nhập mật khẩu của bạn");
       return;
     }
 
@@ -145,7 +154,7 @@ function LoginForm() {
           </div>
         )}
 
-        <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+        <form className="mt-6 space-y-5" onSubmit={handleSubmit} noValidate>
           <div className="space-y-4">
             <div>
               <label
@@ -159,7 +168,6 @@ function LoginForm() {
                 name="email"
                 type="email"
                 autoComplete="email"
-                required
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
@@ -182,7 +190,6 @@ function LoginForm() {
                 name="password"
                 type="password"
                 autoComplete="current-password"
-                required
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);

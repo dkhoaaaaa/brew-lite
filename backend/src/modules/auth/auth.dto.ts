@@ -8,9 +8,10 @@ import {
 } from "class-validator";
 
 export class RegisterDto {
-  @IsEmail({}, { message: "Email không hợp lệ" })
+  @IsNotEmpty({ message: "Vui lòng nhập gmail của bạn" })
+  @IsEmail({}, { message: "Gmail phải có định dạng @gmail.com" })
   @Matches(/^[a-zA-Z0-9._%+-]+@gmail\.com$/i, {
-    message: "Email phải có đuôi @gmail.com",
+    message: "Gmail phải có định dạng @gmail.com",
   })
   email: string;
 
@@ -41,14 +42,15 @@ export class RegisterDto {
 }
 
 export class LoginDto {
-  @IsEmail({}, { message: "Email không hợp lệ" })
+  @IsNotEmpty({ message: "Vui lòng nhập gmail của bạn" })
+  @IsEmail({}, { message: "Gmail phải có định dạng @gmail.com" })
   @Matches(/^[a-zA-Z0-9._%+-]+@gmail\.com$/i, {
-    message: "Email phải có đuôi @gmail.com",
+    message: "Gmail phải có định dạng @gmail.com",
   })
   email: string;
 
   @IsString({ message: "Mật khẩu phải là chuỗi ký tự" })
-  @IsNotEmpty({ message: "Mật khẩu không được để trống" })
+  @IsNotEmpty({ message: "Vui lòng nhập mật khẩu của bạn" })
   password: string;
 }
 
