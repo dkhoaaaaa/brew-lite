@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { register } from "../../lib/auth";
 import { formatErrorMessage } from "../../lib/api-client";
 
@@ -34,15 +34,57 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Dọn dẹp form sạch sẽ khi component mount / khi vào trang đăng ký
+  useEffect(() => {
+    setFullName("");
+    setEmail("");
+    setPhone("");
+    setPassword("");
+    setConfirmPassword("");
+    setError(null);
+    setLoading(false);
+    setSuccess(false);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 6) {
-      setError("Mật khẩu phải có ít nhất 6 ký tự");
+    // 1. Kiểm tra Họ và tên (chỉ được là chữ cái, không được là số, ít nhất 2 ký tự, ngăn cách bởi khoảng trắng)
+    const trimmedFullName = fullName.trim();
+    if (/\d/.test(trimmedFullName)) {
+      setError("Họ và tên phải là chữ cái không được là số");
       return;
     }
 
+    if (!/^[\p{L}\s]+$/u.test(trimmedFullName)) {
+      setError("Họ và tên chỉ được chứa chữ cái và khoảng trắng");
+      return;
+    }
+
+    const nameParts = trimmedFullName.split(/\s+/).filter(Boolean);
+    if (trimmedFullName.length < 2 || nameParts.length < 2) {
+      setError(
+        "Họ và tên yêu cầu có ít nhất 2 Chữ cái",
+      );
+      return;
+    }
+
+    // 2. Kiểm tra Số điện thoại (phải có đúng 10 chữ số)
+    const trimmedPhone = phone.trim();
+    if (!/^[0-9]{10}$/.test(trimmedPhone)) {
+      setError("Số điện thoại phải có đúng 10 chữ số");
+      return;
+    }
+
+    // 3. Kiểm tra Mật khẩu (phải có ít nhất 6 chữ số)
+    const digitCount = (password.match(/[0-9]/g) || []).length;
+    if (password.length < 6 || digitCount < 6) {
+      setError("Mật khẩu phải có ít nhất 6 chữ số");
+      return;
+    }
+
+    // 4. Kiểm tra Xác nhận mật khẩu
     if (password !== confirmPassword) {
       setError("Mật khẩu xác nhận không khớp");
       return;
@@ -52,17 +94,29 @@ function RegisterForm() {
 
     try {
       await register({
-        fullName,
-        email,
-        phone: phone.trim() ? phone.trim() : undefined,
+        fullName: trimmedFullName,
+        email: email.trim(),
+        phone: trimmedPhone,
         password,
       });
 
+      // Dọn dẹp form đăng ký sau khi đăng ký thành công
+      setFullName("");
+      setEmail("");
+      setPhone("");
+      setPassword("");
+      setConfirmPassword("");
       setSuccess(true);
+
+      // Chuyển qua giao diện đăng nhập (giữ param redirect nếu có)
+      const targetLogin =
+        redirectUrl && redirectUrl !== "/"
+          ? `/login?redirect=${encodeURIComponent(redirectUrl)}`
+          : "/login";
+
       setTimeout(() => {
-        router.push(redirectUrl);
-        router.refresh();
-      }, 500);
+        router.push(targetLogin);
+      }, 1000);
     } catch (err: unknown) {
       setError(formatErrorMessage(err));
     } finally {
@@ -101,7 +155,7 @@ function RegisterForm() {
 
         {success && (
           <div className="bg-[#F0FDF4] border-l-4 border-[#16A34A] p-3.5 rounded-lg text-sm text-[#166534]">
-            Đăng ký thành công! Đang chuyển hướng...
+            Đăng ký thành công! Đang chuyển hướng sang trang đăng nhập...
           </div>
         )}
 
@@ -150,12 +204,13 @@ function RegisterForm() {
               htmlFor="phone"
               className="block text-sm font-semibold text-[#30251D] mb-1.5"
             >
-              Số điện thoại liên hệ (tùy chọn)
+              Số điện thoại <span className="text-[#C84B31]">*</span>
             </label>
             <input
               id="phone"
               name="phone"
               type="tel"
+              required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
@@ -168,7 +223,7 @@ function RegisterForm() {
               htmlFor="password"
               className="block text-sm font-semibold text-[#30251D] mb-1.5"
             >
-              Mật khẩu (tối thiểu 6 ký tự) <span className="text-[#C84B31]">*</span>
+              Mật khẩu (tối thiểu 6 chữ số) <span className="text-[#C84B31]">*</span>
             </label>
             <input
               id="password"
