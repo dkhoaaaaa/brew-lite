@@ -3,13 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useCart } from "../../cart/cart-store";
-import { getProductDetail } from "../../../lib/products-api";
 import { formatPrice, fromMinorUnits, toMinorUnits } from "../../../lib/money";
+import { getProductDetail } from "../../../lib/products-api";
 import type {
   AddToCartHandler,
   ProductDetailData,
 } from "../../../types/product";
+import { useCart } from "../../cart/cart-store";
 import { SizeSelector } from "./SizeSelector";
 import { ToppingSelector } from "./ToppingSelector";
 
@@ -99,6 +99,12 @@ function ProductDetailView({
   if (!product) return null;
   const currentProduct = product;
 
+  const isOut = Boolean(
+    currentProduct.isOutOfStock ||
+      (typeof currentProduct.availableQuantity === "number" && currentProduct.availableQuantity <= 0) ||
+      (typeof currentProduct.stock === "number" && currentProduct.stock <= 0),
+  );
+
   const selectedSize = currentProduct.sizes.find((size) => size.id === selectedSizeId) ?? null;
   const selectedToppings = currentProduct.toppings.filter((topping) =>
     selectedToppingIds.includes(topping.id),
@@ -111,6 +117,10 @@ function ProductDetailView({
 
   function addToCart() {
     setNotice(null);
+    if (isOut) {
+      setSelectionError("Món này tạm thời hết hàng do không đủ nguyên liệu chế biến.");
+      return;
+    }
     if (!selectedSize) {
       setSelectionError(
         currentProduct.sizes.length > 0
@@ -145,7 +155,12 @@ function ProductDetailView({
     <main className="page-shell product-detail-page">
       <Link className="back-link" href="/menu">← Menu</Link>
       <div className="product-detail">
-        <div className="product-detail__image">
+        <div className="product-detail__image relative">
+          {isOut && (
+            <span className="absolute top-4 left-4 z-10 bg-amber-900/90 text-amber-50 text-xs font-bold px-3 py-1 rounded-full shadow-md uppercase tracking-wider">
+              Hết hàng
+            </span>
+          )}
           {fullImageUrl ? (
             <Image src={fullImageUrl} alt={currentProduct.name} fill unoptimized sizes="(max-width: 800px) 100vw, 55vw" />
           ) : (
@@ -157,6 +172,12 @@ function ProductDetailView({
           <h1>{currentProduct.name}</h1>
           {currentProduct.description && <p className="product-detail__description">{currentProduct.description}</p>}
           <p className="base-price">Giá gốc <strong>{formatPrice(currentProduct.price)}</strong></p>
+
+          {isOut && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-lg text-sm font-medium my-3" role="status">
+              Món này hiện tại đã hết hàng do không đủ nguyên liệu trong kho. Quý khách vui lòng chọn món khác.
+            </div>
+          )}
 
           <SizeSelector
             sizes={product.sizes}
@@ -177,8 +198,13 @@ function ProductDetailView({
               <span className="purchase-row__label">Tạm tính / món</span>
               <strong>{formatPrice(unitPrice)}</strong>
             </div>
-            <button className="button button--accent" type="button" onClick={addToCart}>
-              Thêm vào giỏ <span aria-hidden="true">+</span>
+            <button
+              className={`button button--accent ${isOut ? "opacity-60 cursor-not-allowed bg-stone-400 hover:bg-stone-400" : ""}`}
+              type="button"
+              onClick={addToCart}
+              disabled={isOut}
+            >
+              {isOut ? "Hết hàng" : <>Thêm vào giỏ <span aria-hidden="true">+</span></>}
             </button>
           </div>
           {selectionError && <p className="inline-notice" role="alert">{selectionError}</p>}

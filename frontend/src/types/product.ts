@@ -18,6 +18,9 @@ export type ProductSummary = {
   imageUrl: string | null;
   categoryId?: string | null;
   categoryName?: string | null;
+  stock?: number;
+  availableQuantity?: number;
+  isOutOfStock?: boolean;
 };
 
 export type ProductDetailData = ProductSummary & {

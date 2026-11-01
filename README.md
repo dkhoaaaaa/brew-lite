@@ -197,8 +197,8 @@ docker compose down
 
 | Email | Mật khẩu mẫu | Ghi chú |
 |---|---|---|
-| `example@example.com` | `Example@123` | Tài khoản ví dụ |
-| `customer1@example.com` | `Customer@123` | Khách hàng, 100 điểm mẫu |
+| `example@gmail.com` | `Example@123` | Tài khoản ví dụ |
+| `customer1@gmail.com` | `Customer@123` | Khách hàng, 100 điểm mẫu |
 
 Các tài khoản trên **chỉ có sau khi seed tài khoản được chạy thành công**. Trong Prisma schema hiện tại, `User` không có cột `role`, nên không có tài khoản Admin/Staff được phân quyền bởi schema này. Mật khẩu được lưu ở dạng bcrypt hash, không lưu dạng plaintext.
 
