@@ -235,7 +235,7 @@ const promotionData = [
 
 const accountData = [
   {
-    email: "example@example.com",
+    email: "example@gmail.com",
     password: "Example@123",
     fullName: "Nguyễn Văn Example",
     phone: null,
@@ -243,7 +243,7 @@ const accountData = [
     isActive: true,
   },
   {
-    email: "customer1@example.com",
+    email: "customer1@gmail.com",
     password: "Customer@123",
     fullName: "Nguyễn Văn A",
     phone: null,
