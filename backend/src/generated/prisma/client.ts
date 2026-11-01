@@ -72,6 +72,16 @@ export type Topping = Prisma.ToppingModel
  */
 export type ProductTopping = Prisma.ProductToppingModel
 /**
+ * Model Ingredient
+ * 
+ */
+export type Ingredient = Prisma.IngredientModel
+/**
+ * Model ProductRecipe
+ * 
+ */
+export type ProductRecipe = Prisma.ProductRecipeModel
+/**
  * Model Cart
  * 
  */

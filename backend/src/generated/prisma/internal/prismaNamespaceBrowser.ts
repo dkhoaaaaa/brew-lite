@@ -57,6 +57,8 @@ export const ModelName = {
   ProductSize: 'ProductSize',
   Topping: 'Topping',
   ProductTopping: 'ProductTopping',
+  Ingredient: 'Ingredient',
+  ProductRecipe: 'ProductRecipe',
   Cart: 'Cart',
   CartItem: 'CartItem',
   CartItemTopping: 'CartItemTopping',
@@ -157,6 +159,30 @@ export const ProductToppingScalarFieldEnum = {
 } as const
 
 export type ProductToppingScalarFieldEnum = (typeof ProductToppingScalarFieldEnum)[keyof typeof ProductToppingScalarFieldEnum]
+
+
+export const IngredientScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  unit: 'unit',
+  stockQuantity: 'stockQuantity',
+  minStock: 'minStock',
+  version: 'version',
+  isActive: 'isActive',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type IngredientScalarFieldEnum = (typeof IngredientScalarFieldEnum)[keyof typeof IngredientScalarFieldEnum]
+
+
+export const ProductRecipeScalarFieldEnum = {
+  productId: 'productId',
+  ingredientId: 'ingredientId',
+  quantity: 'quantity'
+} as const
+
+export type ProductRecipeScalarFieldEnum = (typeof ProductRecipeScalarFieldEnum)[keyof typeof ProductRecipeScalarFieldEnum]
 
 
 export const CartScalarFieldEnum = {
