@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-generated/prisma
+src/generated/
 
 # NestJS / Build
 dist/
