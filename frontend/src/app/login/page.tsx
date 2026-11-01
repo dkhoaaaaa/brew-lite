@@ -71,10 +71,27 @@ function LoginForm() {
     e.preventDefault();
     setError(null);
     setLoggedOutToast(false);
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError("Vui lòng nhập gmail của bạn");
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(trimmedEmail)) {
+      setError("Gmail phải có định dạng @gmail.com");
+      return;
+    }
+
+    if (!password.trim()) {
+      setError("Vui lòng nhập mật khẩu của bạn");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await login({ email, password });
+      await login({ email: trimmedEmail, password });
       setSuccess(true);
       redirectTimerRef.current = setTimeout(() => {
         router.push(redirectUrl);
@@ -137,7 +154,7 @@ function LoginForm() {
           </div>
         )}
 
-        <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+        <form className="mt-6 space-y-5" onSubmit={handleSubmit} noValidate>
           <div className="space-y-4">
             <div>
               <label
@@ -151,14 +168,13 @@ function LoginForm() {
                 name="email"
                 type="email"
                 autoComplete="email"
-                required
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (loggedOutToast) setLoggedOutToast(false);
                 }}
                 className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
-                placeholder="vidu@email.com"
+                placeholder="vidu@gmail.com"
               />
             </div>
 
@@ -174,7 +190,6 @@ function LoginForm() {
                 name="password"
                 type="password"
                 autoComplete="current-password"
-                required
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
