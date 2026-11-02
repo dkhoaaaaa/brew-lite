@@ -11,8 +11,8 @@ export interface OrderItemPayload {
   productId: string;
   productSizeId: string;
   quantity: number;
-  sugarPercent?: number;
-  icePercent?: number;
+  sugarPercent?: number | null;
+  icePercent?: number | null;
   note?: string;
   toppings?: OrderItemToppingPayload[];
 }
@@ -27,8 +27,8 @@ export interface CreatedOrderItem {
   productId: string;
   productName: string;
   sizeCode: string;
-  sugarPercent?: number;
-  icePercent?: number;
+  sugarPercent?: number | null;
+  icePercent?: number | null;
   note?: string;
   quantity: number;
   unitPrice: number;
@@ -75,20 +75,10 @@ export interface CreatedOrderResponse {
   statusHistory?: OrderStatusHistoryItem[];
 }
 
-export interface MockPaymentPayload {
-  method: "E_WALLET" | "BANK_CARD";
-  outcome: "success" | "failure";
-  idempotencyKey?: string;
-}
-
-export interface MockPaymentApiResponse {
-  outcome: "SIMULATED_SUCCESS" | "SIMULATED_FAILURE";
+export interface VnpayPaymentResponse {
+  paymentUrl: string;
   orderId: string;
-  orderCode: string;
-  status: string;
   paymentStatus: string;
-  message: string;
-  pointsEarned?: number;
 }
 
 function getAuthHeaders(): HeadersInit {
@@ -109,10 +99,14 @@ function getAuthHeaders(): HeadersInit {
 export async function createOrder(
   payload: CreateOrderPayload,
   userId?: string,
+  idempotencyKey?: string,
 ): Promise<CreatedOrderResponse> {
   const headers = getAuthHeaders() as Record<string, string>;
   if (userId) {
     headers["x-user-id"] = userId;
+  }
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
   }
 
   const response = await fetch(`${API_URL}/orders`, {
@@ -188,18 +182,22 @@ export async function getOrderById(orderId: string): Promise<CreatedOrderRespons
   return response.json();
 }
 
-export async function executeMockPayment(
+export async function createVnpayPayment(
   orderId: string,
-  payload: MockPaymentPayload,
-): Promise<MockPaymentApiResponse> {
-  const response = await fetch(`${API_URL}/orders/${encodeURIComponent(orderId)}/mock-payment`, {
+  idempotencyKey: string,
+): Promise<VnpayPaymentResponse> {
+  const headers = getAuthHeaders() as Record<string, string>;
+  headers["Idempotency-Key"] = idempotencyKey;
+  const response = await fetch(
+    `${API_URL}/payments/orders/${encodeURIComponent(orderId)}/vnpay`,
+    {
     method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify(payload),
-  });
+      headers,
+    },
+  );
 
   if (!response.ok) {
-    let errorMessage = `Lỗi thanh toán mô phỏng (${response.status})`;
+    let errorMessage = `Không thể khởi tạo thanh toán VNPay (${response.status})`;
     try {
       const errorBody = await response.json();
       if (errorBody && errorBody.message) {

@@ -5,18 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Toast } from "../../components/Toast";
 import { useCart } from "../../features/cart/cart-store";
-import {
-  isMockPaymentMethod,
-  type MockPaymentMethod,
-  type MockPaymentOutcome,
-  type MockPaymentResult,
-} from "../../features/payment/mock-payment";
 import { useAuth } from "../../lib/auth";
 import { getMyVouchers, type UserVoucher } from "../../lib/loyalty-api";
 import { formatPrice } from "../../lib/money";
 import {
   applyVoucherToOrder,
-  executeMockPayment,
+  createVnpayPayment,
   getOrderById,
   removeVoucherFromOrder,
   type CreatedOrderResponse,
@@ -36,34 +30,19 @@ export default function CheckoutPage() {
   );
 }
 
-function isCreatedOrderResponse(value: unknown): value is CreatedOrderResponse {
-  if (typeof value !== "object" || value === null) return false;
-  const order = value as Partial<CreatedOrderResponse>;
-  return (
-    typeof order.id === "string" &&
-    typeof order.orderCode === "string" &&
-    typeof order.status === "string" &&
-    typeof order.total === "number" && Number.isFinite(order.total) &&
-    Array.isArray(order.items)
-  );
-}
-
 function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
   const { isAuthenticated } = useAuth();
   const { hydrated } = useCart();
-  const [method, setMethod] = useState<MockPaymentMethod | null>(null);
-  const [outcome, setOutcome] = useState<MockPaymentOutcome>("success");
-  const [result, setResult] = useState<MockPaymentResult | null>(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ title: string; message?: string } | null>(null);
   const [createdOrder, setCreatedOrder] = useState<CreatedOrderResponse | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderSnapshotLoaded, setOrderSnapshotLoaded] = useState(false);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const submissionLock = useRef(false);
   const [userVouchers, setUserVouchers] = useState<UserVoucher[]>([]);
   const [selectedVoucherCode, setSelectedVoucherCode] = useState<string>("");
@@ -86,10 +65,11 @@ function CheckoutContent() {
     try {
       const updated = await applyVoucherToOrder(createdOrder.id, code);
       setCreatedOrder(updated);
-      window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(updated));
       setToast({ title: "Áp dụng thành công", message: `Đã áp dụng mã giảm giá ${code}` });
-    } catch (err: any) {
-      setVoucherError(err.message || "Không thể áp dụng mã này.");
+    } catch (err: unknown) {
+      setVoucherError(
+        err instanceof Error ? err.message : "Không thể áp dụng mã này.",
+      );
     } finally {
       setApplyingVoucher(false);
     }
@@ -102,11 +82,12 @@ function CheckoutContent() {
     try {
       const updated = await removeVoucherFromOrder(createdOrder.id);
       setCreatedOrder(updated);
-      window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(updated));
       setSelectedVoucherCode("");
       setToast({ title: "Đã hủy áp dụng", message: "Đã xóa mã giảm giá khỏi đơn hàng." });
-    } catch (err: any) {
-      setVoucherError(err.message || "Không thể hủy mã này.");
+    } catch (err: unknown) {
+      setVoucherError(
+        err instanceof Error ? err.message : "Không thể hủy mã này.",
+      );
     } finally {
       setApplyingVoucher(false);
     }
@@ -124,30 +105,8 @@ function CheckoutContent() {
 
   useEffect(() => {
     let active = true;
-    if (!orderId) {
-      setOrderError("Không có mã đơn được backend xác nhận trong phiên này.");
-      setOrderSnapshotLoaded(true);
-      return;
-    }
+    if (!orderId) return;
 
-    // 1. Thử đọc từ sessionStorage
-    try {
-      const stored = window.sessionStorage.getItem("lastCreatedOrder");
-      const parsed: unknown = stored ? JSON.parse(stored) : null;
-      if (isCreatedOrderResponse(parsed) && parsed.id === orderId) {
-        if (parsed.status !== "PENDING" && parsed.status !== "PAYMENT_FAILED") {
-          setOrderError(`Đơn hàng này đang ở trạng thái ${parsed.status}, không thể tiếp tục thanh toán.`);
-        } else {
-          setCreatedOrder(parsed);
-        }
-        setOrderSnapshotLoaded(true);
-        return;
-      }
-    } catch {
-      // Bỏ qua lỗi session và fallback qua gọi API
-    }
-
-    // 2. Nếu không có trong sessionStorage (người dùng thoát trang rồi vào lại), gọi API lấy từ Backend!
     getOrderById(orderId)
       .then((order) => {
         if (!active) return;
@@ -155,7 +114,6 @@ function CheckoutContent() {
           setOrderError(`Đơn hàng #${order.orderCode} đã ở trạng thái ${order.status}, không thể thanh toán tiếp.`);
         } else {
           setCreatedOrder(order);
-          window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(order));
         }
         setOrderSnapshotLoaded(true);
       })
@@ -170,30 +128,29 @@ function CheckoutContent() {
     };
   }, [orderId]);
 
-  // Bộ đếm ngược thời gian thanh toán (2 phút)
+  // Use the server-issued expiry timestamp; the timeout remains owned by the backend.
   useEffect(() => {
+    const expiresAt = createdOrder?.expiresAt;
+    const status = createdOrder?.status;
     if (
-      !createdOrder?.expiresAt ||
-      (createdOrder.status !== "PENDING" && createdOrder.status !== "PAYMENT_FAILED")
+      !expiresAt ||
+      (status !== "PENDING" && status !== "PAYMENT_FAILED")
     ) {
-      setTimeLeft(null);
       return;
     }
 
-    const expiresAtMs = new Date(createdOrder.expiresAt).getTime();
-
-    const updateTimer = () => {
-      const remaining = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
-      setTimeLeft(remaining);
-      if (remaining <= 0) {
-        setOrderError("Đơn hàng đã hết hạn thanh toán (quá 2 phút) và đã bị hủy. Vui lòng tạo đơn mới.");
-      }
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
+    const interval = setInterval(() => setClockNow(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, [createdOrder]);
+  }, [createdOrder?.expiresAt, createdOrder?.status]);
+
+  const timeLeft =
+    createdOrder?.expiresAt &&
+    (createdOrder.status === "PENDING" || createdOrder.status === "PAYMENT_FAILED")
+      ? Math.max(
+          0,
+          Math.floor((new Date(createdOrder.expiresAt).getTime() - clockNow) / 1000),
+        )
+      : null;
 
   const formatCountdown = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -201,7 +158,7 @@ function CheckoutContent() {
     return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
-  async function submitMockPayment() {
+  async function submitVnpayPayment() {
     if (
       submissionLock.current ||
       !createdOrder ||
@@ -213,60 +170,17 @@ function CheckoutContent() {
       setError("Đơn hàng đã hết hạn thanh toán.");
       return;
     }
-    if (!isMockPaymentMethod(method)) {
-      setError("Vui lòng chọn phương thức thanh toán mô phỏng.");
-      setResult(null);
-      return;
-    }
-
     submissionLock.current = true;
     setProcessing(true);
     setError(null);
-    setResult(null);
 
     try {
-      const paymentResult = await executeMockPayment(createdOrder.id, {
-        method,
-        outcome,
-      });
-
-      if (paymentResult.outcome === "SIMULATED_SUCCESS") {
-        const mockPaymentRecord = {
-          method,
-          outcome: paymentResult.outcome,
-          timestamp: new Date().toISOString(),
-        };
-        try {
-          window.sessionStorage.setItem("lastMockPaymentResult", JSON.stringify(mockPaymentRecord));
-          window.sessionStorage.setItem(
-            "lastCreatedOrder",
-            JSON.stringify({ ...createdOrder, status: "PAID" }),
-          );
-        } catch {
-          // Bỏ qua nếu lỗi lưu session
-        }
-
-        router.push(`/checkout/confirmation?orderId=${encodeURIComponent(createdOrder.id)}`);
-      } else {
-        const updatedFailedOrder = { ...createdOrder, status: "PAYMENT_FAILED" };
-        setCreatedOrder(updatedFailedOrder);
-        try {
-          window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(updatedFailedOrder));
-        } catch {
-          // Ignore
-        }
-
-        setToast({
-          title: "Thanh toán không thành công",
-          message: paymentResult.message || "Giao dịch mô phỏng thất bại. Vui lòng thử thanh toán lại hoặc chọn phương thức khác.",
-        });
-        setResult({
-          outcome: "SIMULATED_FAILURE",
-          message: paymentResult.message,
-        });
-      }
-    } catch (err: any) {
-      const msg = err instanceof Error ? err.message : "Không thể chạy mô phỏng lúc này. Vui lòng thử lại.";
+      const payment = await createVnpayPayment(createdOrder.id, crypto.randomUUID());
+      window.location.assign(payment.paymentUrl);
+    } catch (err: unknown) {
+      const msg = err instanceof Error
+        ? err.message
+        : "Không thể khởi tạo thanh toán VNPay. Vui lòng thử lại.";
       setError(msg);
       setToast({
         title: "Có lỗi xảy ra",
@@ -276,6 +190,18 @@ function CheckoutContent() {
       submissionLock.current = false;
       setProcessing(false);
     }
+  }
+
+  if (!orderId) {
+    return (
+      <main className="page-shell">
+        <section className="state-panel">
+          <h1>Chưa có đơn hàng để thanh toán.</h1>
+          <p>Hãy tạo đơn từ giỏ hàng trước khi tiếp tục.</p>
+          <Link className="button button--dark" href="/cart">Quay lại giỏ hàng</Link>
+        </section>
+      </main>
+    );
   }
 
   if (!hydrated || !orderSnapshotLoaded) {
@@ -304,9 +230,9 @@ function CheckoutContent() {
     <main className="page-shell checkout-page">
       <Link className="back-link" href="/cart">Quay lại giỏ hàng</Link>
       <header className="checkout-heading">
-        <p className="eyebrow">BrewLite · checkout thử nghiệm</p>
-        <h1>Thanh toán thành công</h1>
-        <p>Đây là luồng thanh toán mô phỏng kết nối database thật. Đơn hàng sẽ chuyển sang trạng thái PAID khi hoàn tất.</p>
+        <p className="eyebrow">BrewLite · checkout</p>
+        <h1>Thanh toán đơn hàng</h1>
+        <p>Bạn sẽ được chuyển đến VNPay Sandbox. Trạng thái đơn chỉ được cập nhật sau khi backend xác minh IPN.</p>
         
         {timeLeft !== null && (
           <div
@@ -324,7 +250,7 @@ function CheckoutContent() {
               color: isExpired ? "#9B1C1C" : "#5C4738",
             }}
           >
-            <span>Thời gian giữ đơn còn lại:</span>
+            <span>Thời gian thanh toán còn lại:</span>
             <strong style={{ fontFamily: "monospace", fontSize: "15px" }}>
               {formatCountdown(timeLeft)}
             </strong>
@@ -344,68 +270,12 @@ function CheckoutContent() {
           </div>
 
           <fieldset className="option-group">
-            <legend>Phương thức mô phỏng</legend>
+            <legend>Cổng thanh toán</legend>
             <div className="payment-methods">
               <label className="payment-method">
-                <input
-                  checked={method === "E_WALLET"}
-                  disabled={isExpired || processing}
-                  name="payment-method"
-                  onChange={() => {
-                    setMethod("E_WALLET");
-                    setError(null);
-                    setResult(null);
-                  }}
-                  type="radio"
-                />
-                <span><strong>Ví điện tử</strong><small>Chỉ mô phỏng</small></span>
+                <input checked disabled name="payment-method" type="radio" />
+                <span><strong>VNPay Sandbox</strong><small>Ngân hàng, thẻ hoặc QR được chọn trên VNPay</small></span>
               </label>
-              <label className="payment-method">
-                <input
-                  checked={method === "BANK_CARD"}
-                  disabled={isExpired || processing}
-                  name="payment-method"
-                  onChange={() => {
-                    setMethod("BANK_CARD");
-                    setError(null);
-                    setResult(null);
-                  }}
-                  type="radio"
-                />
-                <span><strong>Thẻ ngân hàng</strong><small>Không nhập số thẻ</small></span>
-              </label>
-            </div>
-          </fieldset>
-
-          <fieldset className="option-group">
-            <legend> Kết quả mô phỏng</legend>
-            <div aria-label="Kết quả thanh toán giả lập" className="outcome-toggle" role="group">
-              <button
-                aria-pressed={outcome === "success"}
-                className={outcome === "success" ? "is-selected" : ""}
-                disabled={isExpired || processing}
-                onClick={() => {
-                  setOutcome("success");
-                  setResult(null);
-                  setError(null);
-                }}
-                type="button"
-              >
-                Thành công
-              </button>
-              <button
-                aria-pressed={outcome === "failure"}
-                className={outcome === "failure" ? "is-selected" : ""}
-                disabled={isExpired || processing}
-                onClick={() => {
-                  setOutcome("failure");
-                  setResult(null);
-                  setError(null);
-                }}
-                type="button"
-              >
-                Thất bại
-              </button>
             </div>
           </fieldset>
 
@@ -413,30 +283,28 @@ function CheckoutContent() {
             className="button button--accent checkout-submit"
             disabled={
               processing ||
-              !method ||
               (createdOrder.status !== "PENDING" && createdOrder.status !== "PAYMENT_FAILED") ||
               isExpired
             }
-            onClick={submitMockPayment}
+            onClick={submitVnpayPayment}
             type="button"
           >
-            {processing ? "Đang xử lý..." : isExpired ? "Đơn đã hết hạn" : result?.outcome === "SIMULATED_FAILURE" || createdOrder.status === "PAYMENT_FAILED" ? "Thử lại mô phỏng" : "Chạy Mock Payment"}
+            {processing ? "Đang chuyển đến VNPay..." : isExpired ? "Đơn đã hết hạn" : "Thanh toán qua VNPay"}
           </button>
           {error && <p className="payment-result payment-result--failure" role="alert">{error}</p>}
-          {(result?.outcome === "SIMULATED_FAILURE" || createdOrder.status === "PAYMENT_FAILED") && (
+          {createdOrder.status === "PAYMENT_FAILED" && (
             <section
               aria-live="polite"
               className="payment-result payment-result--failure"
               role="status"
             >
-              <strong> Kết quả mô phỏng: thất bại</strong>
-              <p>{result?.message || "Lần thanh toán trước không thành công."}</p>
-              <small>Đơn hàng chuyển sang trạng thái PAYMENT_FAILED. Bạn có thể chọn lại phương thức và thử lại trước khi hết thời gian 2 phút.</small>
+              <strong>Lần thanh toán trước không thành công.</strong>
+              <p>Trạng thái do backend xác nhận. Bạn có thể thử lại trước khi đơn hết hạn.</p>
             </section>
           )}
           {createdOrder.status !== "PENDING" && createdOrder.status !== "PAYMENT_FAILED" && (
             <p className="payment-result payment-result--failure" role="status">
-              Đơn hàng không ở trạng thái có thể chạy thanh toán.
+              Đơn hàng không ở trạng thái có thể thanh toán.
             </p>
           )}
         </section>
@@ -446,7 +314,12 @@ function CheckoutContent() {
           <div className="space-y-2 mb-4">
             {createdOrder.items.map((item) => (
               <div className="flex justify-between items-start text-xs sm:text-sm text-[#30251D]" key={item.id}>
-                <span>{item.quantity} × {item.productName} (Size {item.sizeCode})</span>
+                <span>
+                  {item.quantity} × {item.productName} (Size {item.sizeCode})
+                  <small className="block text-[#8C7E73]">
+                    Đường {item.sugarPercent ?? 100}% · Đá {item.icePercent ?? 100}%
+                  </small>
+                </span>
                 <strong className="whitespace-nowrap">{formatPrice(String(item.lineTotal))}</strong>
               </div>
             ))}
@@ -541,7 +414,7 @@ function CheckoutContent() {
             </span>
           </div>
 
-          <p className="mt-4 text-[11px] text-[#8C7E73] leading-relaxed">Đơn hàng được lưu trên hệ thống. Sau 2 phút nếu không hoàn tất thanh toán, đơn sẽ tự động bị hủy.</p>
+          <p className="mt-4 text-[11px] text-[#8C7E73] leading-relaxed">Đơn hàng được lưu trên hệ thống và tự hết hạn theo thời gian còn lại hiển thị ở trên.</p>
         </aside>
       </div>
 
