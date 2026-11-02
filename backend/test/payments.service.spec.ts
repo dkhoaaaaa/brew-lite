@@ -5,13 +5,14 @@ import { PaymentsService } from "../src/modules/payments/payments.service.js";
 const secret = "test-hash-secret";
 const tmnCode = "TESTMERCHANT";
 
-function configService() {
-  const values: Record<string, string> = {
+function configService(overrides: Record<string, string | undefined> = {}) {
+  const values: Record<string, string | undefined> = {
     "payment.vnpay.paymentUrl": "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
     "payment.vnpay.tmnCode": tmnCode,
     "payment.vnpay.hashSecret": secret,
     "payment.vnpay.returnUrl": "https://example.test/payments/vnpay/return",
     "payment.vnpay.frontendUrl": "https://example.test",
+    ...overrides,
   };
   return { get: (key: string) => values[key] };
 }
@@ -302,6 +303,22 @@ describe("PaymentsService VNPay", () => {
     expect(prisma.payment.findUnique).not.toHaveBeenCalled();
   });
 
+  it("can process IPN without Return URL or frontend configuration", async () => {
+    const { prisma } = createCallbackHarness();
+    const service = new PaymentsService(
+      prisma as never,
+      configService({
+        "payment.vnpay.paymentUrl": undefined,
+        "payment.vnpay.returnUrl": undefined,
+        "payment.vnpay.frontendUrl": undefined,
+      }) as never,
+    );
+
+    const result = await service.handleIpn(createIpnQuery());
+
+    expect(result.RspCode).toBe("00");
+  });
+
   it("rejects a callback whose signed order reference does not match the payment", async () => {
     const { service, prisma } = createCallbackHarness();
     const result = await service.handleIpn(
@@ -463,6 +480,38 @@ describe("PaymentsService VNPay", () => {
 
     expect(result.RspCode).toBe("00");
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges a repeated failure callback without duplicating order history", async () => {
+    const pending = paymentRecord({ order: orderRecord() });
+    const { service, prisma, tx } = createCallbackHarness(pending);
+    const storedFailure = paymentRecord({
+      status: "FAILED",
+      transactionCode: "987654",
+      rawResponse: {
+        vnpResponseCode: "05",
+        vnpTransactionStatus: "02",
+        vnpTransactionNo: "987654",
+        vnpTxnRef: "21",
+        vnpAmount: "1250000",
+      },
+      order: orderRecord(),
+    });
+    prisma.payment.findUnique.mockResolvedValue(pending);
+    tx.payment.findUnique.mockResolvedValue(storedFailure);
+
+    const result = await service.handleIpn(
+      createIpnQuery({
+        vnp_ResponseCode: "05",
+        vnp_TransactionStatus: "02",
+      }),
+    );
+
+    expect(result.RspCode).toBe("00");
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.payment.update).not.toHaveBeenCalled();
+    expect(tx.order.update).not.toHaveBeenCalled();
+    expect(tx.orderStatusHistory.create).not.toHaveBeenCalled();
   });
 
   it("processes a verified success callback when an earlier failure used the same transaction number", async () => {

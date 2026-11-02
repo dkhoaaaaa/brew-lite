@@ -211,18 +211,23 @@ Các tài khoản trên **chỉ có sau khi seed tài khoản được chạy th
 
 Thanh toán sử dụng VNPay Sandbox. Checkout chỉ khởi tạo giao dịch ở backend và chuyển trình duyệt sang VNPay; trạng thái đơn chỉ được cập nhật sau khi backend xác minh chữ ký và dữ liệu IPN. Return URL chỉ điều hướng người dùng về trang xác nhận, trang này tải lại trạng thái từ API.
 
-1. Sao chép `.env.example` thành `.env` nếu chưa có, sau đó điền `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET` do tài khoản Sandbox cấp. Không đưa Hash Secret vào frontend, không commit `.env`.
-2. Giữ `VNPAY_PAYMENT_URL` ở Sandbox và đặt `VNPAY_RETURN_URL` trỏ đến `http://localhost:3001/payments/vnpay/return` cho môi trường phát triển.
-3. Đặt URL IPN trong cấu hình merchant VNPay thành `https://<host-cong-khai>/payments/vnpay/ipn`. IPN phải dùng HTTPS và có thể truy cập công khai; chỉ cấu hình Return URL là chưa đủ để kiểm thử callback server-to-server.
-4. Chạy `pnpm dev`. Đặt `PAYMENT_TTL_MINUTES` theo khoảng thời gian muốn kiểm thử (số nguyên từ 1 đến 1440; mặc định 2 phút). Thay đổi TTL chỉ áp dụng cho đơn tạo mới.
-5. Đăng nhập, tạo đơn, chọn VNPay Sandbox và hoàn tất giao dịch bằng phương thức/thông tin kiểm thử trong tài liệu Sandbox chính thức. Sau khi VNPay quay lại, trang xác nhận tiếp tục truy vấn trạng thái thật từ backend.
+1. Sao chép `.env.example` thành `.env` nếu chưa có. Điền `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET` do VNPay cấp cho môi trường Sandbox. Không đưa Hash Secret vào frontend hoặc commit file `.env`.
+2. Cấu hình `VNPAY_RETURN_URL` là URL người dùng được chuyển về sau khi thanh toán, ví dụ `http://localhost:3001/payments/vnpay/return` khi trình duyệt và backend đang chạy trên cùng máy. Return URL chỉ điều hướng người dùng về trang xác nhận; nó không thay thế IPN và việc quay về URL này không xác nhận giao dịch đã được backend cập nhật.
+3. IPN là callback server-to-server riêng, dùng route `GET /payments/vnpay/ipn`. URL đăng ký với VNPay có dạng `https://<host-api-cong-khai>/payments/vnpay/ipn`. Endpoint cần HTTPS/SSL và có thể truy cập công khai; VNPay không thể gọi `localhost`, địa chỉ LAN hoặc backend chưa public. IPN URL không lấy từ `VNPAY_RETURN_URL`; trong cấu hình hiện tại không có biến môi trường `VNPAY_IPN_URL`.
+4. Cung cấp IPN URL, môi trường (Sandbox/Production) và `VNPAY_TMN_CODE` tương ứng cho quản trị viên merchant hoặc đầu mối hỗ trợ VNPay để đăng ký với website/mã merchant đó. Tài liệu tích hợp PAY chính thức yêu cầu merchant gửi IPN URL cho VNPay sau khi thiết lập, nhưng tài liệu công khai không nêu đường dẫn menu Merchant Admin cụ thể. Không gửi `VNPAY_HASH_SECRET` qua kênh không an toàn.
+5. Khởi động ứng dụng bằng `pnpm dev`. Có thể cấu hình `PAYMENT_TTL_MINUTES` cho thời gian thanh toán (số nguyên từ 1 đến 1440; mặc định 2 phút); thay đổi này chỉ áp dụng cho đơn tạo mới.
+6. Tạo đơn và hoàn tất giao dịch Sandbox. Kiểm tra log backend và trạng thái đơn được tải trên trang xác nhận để đối chiếu việc xử lý. Chỉ xác nhận IPN thực tế khi backend có endpoint HTTPS công khai và quan sát được callback từ VNPay; giao dịch Sandbox hoặc việc quay về Return URL riêng lẻ không đủ để kết luận IPN đã hoạt động.
+
+Biến môi trường liên quan: `VNPAY_PAYMENT_URL`, `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_RETURN_URL`, `FRONTEND_BASE_URL` (và `PORT` nếu đổi cổng). Riêng xử lý IPN chỉ cần `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET`; tạo payment/luồng return cũng cần `VNPAY_RETURN_URL`. `VNPAY_PAYMENT_URL` mặc định là Sandbox, `FRONTEND_BASE_URL` mặc định là localhost. Không có biến môi trường IPN riêng: host công khai được vận hành/deploy bên ngoài, còn path là `/payments/vnpay/ipn`.
+
+Đối chiếu luồng và response theo [tài liệu tích hợp PAY chính thức của VNPay](https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html): IPN dùng GET, cần SSL, là server-to-server và phản hồi JSON có `RspCode` cùng `Message`; mã 00/02 được xem là đã xác nhận, còn 01/04/97/99 có thể bị retry (tối đa 10 lần, cách nhau 5 phút theo tài liệu). Return URL là điều hướng người dùng, IPN URL mới là nơi backend cập nhật giao dịch.
 
 Các endpoint tích hợp:
 
 | Endpoint | Mục đích |
 |---|---|
 | `POST /payments/orders/:id/vnpay` | Khởi tạo hoặc tiếp tục payment attempt; yêu cầu JWT và `Idempotency-Key` |
-| `GET /payments/vnpay/ipn` | Nhận và xác minh IPN từ VNPay; dùng URL HTTPS công khai đã khai báo với merchant |
+| `GET /payments/vnpay/ipn` | Nhận và xác minh IPN từ VNPay; dùng URL HTTPS công khai đã đăng ký với VNPay |
 | `GET /payments/vnpay/return` | Điều hướng về frontend, không cập nhật trạng thái thanh toán |
 
 Không thể xác nhận giao dịch Sandbox thật nếu chưa có credentials hợp lệ và IPN HTTPS công khai hoạt động. Unit test chỉ xác minh logic backend; không thay thế giao dịch Sandbox thật. Callback thành công đến sau khi đơn đã hủy/hết hạn được lưu để đối soát nhưng không tự mở lại đơn hoặc tích điểm.

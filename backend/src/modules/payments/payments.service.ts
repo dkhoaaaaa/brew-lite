@@ -184,7 +184,7 @@ export class PaymentsService {
   }
 
   async handleIpn(query: Record<string, string | string[] | undefined>) {
-    const config = this.getVnpayConfig();
+    const config = this.getVnpayCredentials();
     const params = this.normalizedQuery(query);
     const signature = params.vnp_SecureHash;
     if (!signature || !this.verifySignature(params, config.hashSecret)) {
@@ -226,16 +226,6 @@ export class PaymentsService {
     ) {
       return { RspCode: "04", Message: "Invalid amount" };
     }
-    if (
-      payment.status === "SUCCESS" &&
-      payment.transactionCode === params.vnp_TransactionNo
-    ) {
-      return { RspCode: "00", Message: "Confirm Success" };
-    }
-    if (!["PENDING", "EXPIRED", "FAILED"].includes(payment.status)) {
-      return { RspCode: "02", Message: "Payment already processed" };
-    }
-
     const success =
       params.vnp_ResponseCode === "00" &&
       params.vnp_TransactionStatus === "00";
@@ -244,6 +234,20 @@ export class PaymentsService {
       : params.vnp_ResponseCode === "24"
         ? "CANCELLED"
         : "FAILED";
+    if (
+      payment.status === "SUCCESS" &&
+      paymentStatus === "SUCCESS" &&
+      payment.transactionCode === params.vnp_TransactionNo
+    ) {
+      return { RspCode: "00", Message: "Confirm Success" };
+    }
+    if (this.isDuplicateIpn(payment, params, paymentStatus)) {
+      return { RspCode: "00", Message: "Confirm Success" };
+    }
+    if (!["PENDING", "EXPIRED", "FAILED"].includes(payment.status)) {
+      return { RspCode: "02", Message: "Payment already processed" };
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM orders WHERE id = ${payment.orderId} FOR UPDATE`;
       const current = await tx.payment.findUnique({
@@ -251,6 +255,14 @@ export class PaymentsService {
         include: { order: true },
       });
       if (!current) return;
+      if (
+        current.status === "SUCCESS" &&
+        paymentStatus === "SUCCESS" &&
+        current.transactionCode === params.vnp_TransactionNo
+      ) {
+        return;
+      }
+      if (this.isDuplicateIpn(current, params, paymentStatus)) return;
       if (!["PENDING", "EXPIRED", "FAILED"].includes(current.status)) return;
 
       const callbackData = {
@@ -366,6 +378,32 @@ export class PaymentsService {
     return { RspCode: "00", Message: "Confirm Success" };
   }
 
+  private isDuplicateIpn(
+    payment: {
+      status: string;
+      transactionCode: string | null;
+      rawResponse: unknown;
+    },
+    params: VnpayParams,
+    paymentStatus: string,
+  ): boolean {
+    const response = payment.rawResponse;
+    return (
+      payment.status === paymentStatus &&
+      payment.transactionCode === params.vnp_TransactionNo &&
+      typeof response === "object" &&
+      response !== null &&
+      "vnpResponseCode" in response &&
+      response.vnpResponseCode === params.vnp_ResponseCode &&
+      "vnpTransactionStatus" in response &&
+      response.vnpTransactionStatus === params.vnp_TransactionStatus &&
+      "vnpTxnRef" in response &&
+      response.vnpTxnRef === params.vnp_TxnRef &&
+      "vnpAmount" in response &&
+      response.vnpAmount === params.vnp_Amount
+    );
+  }
+
   async getReturnDestination(query: Record<string, string | string[] | undefined>) {
     const config = this.getVnpayConfig();
     const reference = typeof query.vnp_TxnRef === "string" ? query.vnp_TxnRef : "";
@@ -384,17 +422,27 @@ export class PaymentsService {
   }
 
   private getVnpayConfig() {
+    const { tmnCode, hashSecret } = this.getVnpayCredentials();
     const paymentUrl = this.config.get<string>("payment.vnpay.paymentUrl");
-    const tmnCode = this.config.get<string>("payment.vnpay.tmnCode");
-    const hashSecret = this.config.get<string>("payment.vnpay.hashSecret");
     const returnUrl = this.config.get<string>("payment.vnpay.returnUrl");
     const frontendUrl = this.config.get<string>("payment.vnpay.frontendUrl");
-    if (!paymentUrl || !tmnCode || !hashSecret || !returnUrl || !frontendUrl) {
+    if (!paymentUrl || !returnUrl || !frontendUrl) {
       throw new ServiceUnavailableException(
         "VNPay configuration is incomplete. Set the required backend environment variables.",
       );
     }
     return { paymentUrl, tmnCode, hashSecret, returnUrl, frontendUrl };
+  }
+
+  private getVnpayCredentials() {
+    const tmnCode = this.config.get<string>("payment.vnpay.tmnCode");
+    const hashSecret = this.config.get<string>("payment.vnpay.hashSecret");
+    if (!tmnCode || !hashSecret) {
+      throw new ServiceUnavailableException(
+        "VNPay configuration is incomplete. Set VNPAY_TMN_CODE and VNPAY_HASH_SECRET.",
+      );
+    }
+    return { tmnCode, hashSecret };
   }
 
   private normalizedQuery(
