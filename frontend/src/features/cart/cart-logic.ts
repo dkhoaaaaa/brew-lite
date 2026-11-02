@@ -11,8 +11,16 @@ export type CartTotals = {
   totalMinorUnits: number;
 };
 
+export const DEFAULT_SUGAR_PERCENT = 100;
+export const DEFAULT_ICE_PERCENT = 100;
+export const DRINK_PREFERENCE_PERCENTAGES = [0, 30, 50, 70, 100] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDrinkPreference(value: unknown): value is number {
+  return DRINK_PREFERENCE_PERCENTAGES.some((percentage) => percentage === value);
 }
 
 function getSafeMinorUnits(value: unknown): number | null {
@@ -61,6 +69,8 @@ export function isCartLine(value: unknown): value is CartLine {
     typeof value.quantity === "number" &&
     Number.isSafeInteger(value.quantity) &&
     value.quantity > 0 &&
+    isDrinkPreference(value.sugarPercent) &&
+    isDrinkPreference(value.icePercent) &&
     isProductSizeOption(value.size) &&
     Array.isArray(value.toppings) &&
     value.toppings.every(isToppingOption) &&
@@ -99,9 +109,15 @@ export function parseStoredCart(serialized: string | null): CartLine[] {
 
     const validItems: CartLine[] = [];
     for (const item of parsed) {
-      if (!isCartLine(item)) continue;
-      const nextItems = [...validItems, item];
-      if (getSafeCartTotals(nextItems) !== null) validItems.push(item);
+      if (!isRecord(item)) continue;
+      const normalizedItem = {
+        ...item,
+        sugarPercent: item.sugarPercent ?? DEFAULT_SUGAR_PERCENT,
+        icePercent: item.icePercent ?? DEFAULT_ICE_PERCENT,
+      };
+      if (!isCartLine(normalizedItem)) continue;
+      const nextItems = [...validItems, normalizedItem];
+      if (getSafeCartTotals(nextItems) !== null) validItems.push(normalizedItem);
     }
     return validItems;
   } catch {
@@ -117,7 +133,9 @@ function sameConfiguration(first: CartLine, second: ConfiguredProduct): boolean 
   const secondToppings = second.toppings.map((topping) => topping.id).sort();
   return (
     firstToppings.length === secondToppings.length &&
-    firstToppings.every((id, index) => id === secondToppings[index])
+    firstToppings.every((id, index) => id === secondToppings[index]) &&
+    first.sugarPercent === second.sugarPercent &&
+    first.icePercent === second.icePercent
   );
 }
 
@@ -196,6 +214,8 @@ export function toCreateOrderPayload(items: CartLine[]): CreateOrderPayload {
         productId: item.productId,
         productSizeId: item.size.id,
         quantity: item.quantity,
+        sugarPercent: item.sugarPercent,
+        icePercent: item.icePercent,
         toppings: item.toppings.map((topping) => ({
           toppingId: topping.id,
           quantity: 1,

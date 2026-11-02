@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "../../../lib/auth";
 import { formatPrice } from "../../../lib/money";
@@ -125,13 +125,12 @@ function OrderStatusTimeline({ status }: { status: string }) {
 
 function OrderDetailsContent() {
   const params = useParams();
-  const router = useRouter();
   const id = typeof params?.id === "string" ? params.id : Array.isArray(params?.id) ? params.id[0] : "";
   const { isAuthenticated } = useAuth();
   const [order, setOrder] = useState<CreatedOrderResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [loadedOrderId, setLoadedOrderId] = useState<string | null>(null);
 
   const handleCancel = async () => {
     if (!order || !window.confirm("Bạn có chắc chắn muốn hủy đơn hàng này không?")) return;
@@ -149,20 +148,18 @@ function OrderDetailsContent() {
   useEffect(() => {
     if (!id) return;
     let active = true;
-    setLoading(true);
-    setError(null);
-
     getOrderById(id)
       .then((data) => {
         if (!active) return;
         setOrder(data);
+        setError(null);
+        setLoadedOrderId(id);
       })
       .catch((err) => {
         if (!active) return;
+        setOrder(null);
         setError(err instanceof Error ? err.message : "Không tìm thấy thông tin đơn hàng.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        setLoadedOrderId(id);
       });
 
     return () => {
@@ -171,9 +168,10 @@ function OrderDetailsContent() {
   }, [id]);
 
   // Polling tự động làm mới trạng thái khi đơn hàng đang trong tiến trình xử lý
+  const orderStatus = order?.status;
   useEffect(() => {
-    if (!id || !order) return;
-    const isProcessing = ["PAID", "PREPARING", "READY"].includes(order.status);
+    if (!id || !orderStatus) return;
+    const isProcessing = ["PAID", "PREPARING", "READY"].includes(orderStatus);
     if (!isProcessing) return;
 
     const interval = setInterval(async () => {
@@ -186,7 +184,7 @@ function OrderDetailsContent() {
     }, 10_000); // 10 giây một lần
 
     return () => clearInterval(interval);
-  }, [id, order?.status]);
+  }, [id, orderStatus]);
 
   if (!isAuthenticated) {
     return (
@@ -210,7 +208,7 @@ function OrderDetailsContent() {
     );
   }
 
-  if (loading) {
+  if (loadedOrderId !== id) {
     return (
       <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 lg:px-8 font-sans text-[#30251D]">
         <div className="max-w-4xl mx-auto bg-white border border-[#DED6CB] rounded-2xl p-12 text-center shadow-sm">
@@ -363,13 +361,9 @@ function OrderDetailsContent() {
                         <span>
                           Size {item.sizeCode} · Đơn giá: {formatPrice(String(item.unitPrice))}
                         </span>
-                        {(item.sugarPercent !== undefined || item.icePercent !== undefined) && (
-                          <span>
-                            {item.sugarPercent !== undefined ? `Đường ${item.sugarPercent}%` : ""}
-                            {item.sugarPercent !== undefined && item.icePercent !== undefined ? " · " : ""}
-                            {item.icePercent !== undefined ? `Đá ${item.icePercent}%` : ""}
-                          </span>
-                        )}
+                        <span>
+                          Đường {item.sugarPercent ?? 100}% · Đá {item.icePercent ?? 100}%
+                        </span>
                         {item.toppings?.length ? (
                           <span>
                             Topping: {item.toppings.map((t) => `${t.name} (x${t.quantity})`).join(", ")}
@@ -476,11 +470,7 @@ function OrderDetailsContent() {
                         Phương thức thanh toán
                       </span>
                       <span className="font-semibold text-[#30251D]">
-                        {latestPayment.method === "BANK_CARD"
-                          ? "Thẻ ngân hàng (Mô phỏng)"
-                          : latestPayment.method === "E_WALLET"
-                          ? "Ví điện tử (Mô phỏng)"
-                          : latestPayment.method}
+                        {latestPayment.method === "VNPAY" ? "VNPay" : latestPayment.method}
                       </span>
                     </div>
 
@@ -517,7 +507,7 @@ function OrderDetailsContent() {
                   >
                     {order.status === "PAYMENT_FAILED"
                       ? "Lần thanh toán trước thất bại. Bạn có thể thử lại ngay bây giờ hoặc hủy đơn."
-                      : "Đơn hàng đang chờ thanh toán. Đơn sẽ tự hủy nếu quá hạn 2 phút."}
+                      : "Đơn hàng đang chờ thanh toán và sẽ tự hủy khi hết thời hạn."}
                   </p>
                   <Link
                     className="inline-flex items-center justify-center bg-[#38291E] hover:bg-[#241A13] !text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors w-full text-center shadow-xs"

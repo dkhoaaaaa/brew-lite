@@ -30,6 +30,8 @@ const baseItem: ConfiguredProduct = {
   productImageUrl: null,
   size: { id: "size-1", sizeCode: "M", extraPrice: "5.00" },
   toppings: [{ id: "topping-1", name: "Topping", price: "1.25" }],
+  sugarPercent: 100,
+  icePercent: 100,
   unitPrice: "6.25",
   quantity: 1,
 };
@@ -68,6 +70,14 @@ describe("Task 5 cart logic", () => {
     expect(parseStoredCart("{" )).toEqual([]);
     expect(parseStoredCart(JSON.stringify({ item: cartLine() }))).toEqual([]);
     expect(parseStoredCart(null)).toEqual([]);
+  });
+
+  it("uses explicit defaults for stored lines created before drink preferences existed", () => {
+    const legacyLine = { ...cartLine(), sugarPercent: undefined, icePercent: undefined };
+
+    expect(parseStoredCart(JSON.stringify([legacyLine]))).toEqual([
+      { ...legacyLine, sugarPercent: 100, icePercent: 100 },
+    ]);
   });
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "2", Number.NaN])(
@@ -125,12 +135,20 @@ describe("Task 5 cart logic", () => {
       ...baseItem,
       toppings: [{ id: "topping-2", name: "Other", price: "1.00" }],
     };
+    const differentSugar = { ...baseItem, sugarPercent: 50 };
+    const differentIce = { ...baseItem, icePercent: 30 };
 
-    const result = [differentProduct, differentSize, differentTopping].reduce(
+    const result = [
+      differentProduct,
+      differentSize,
+      differentTopping,
+      differentSugar,
+      differentIce,
+    ].reduce(
       (items, item, index) => addCartItem(items, item, () => `line-${index + 2}`),
       [first],
     );
-    expect(result).toHaveLength(4);
+    expect(result).toHaveLength(6);
   });
 
   it("merges duplicate configurations but keeps different sizes and toppings separate", () => {
@@ -232,6 +250,8 @@ describe("Task 5 cart logic", () => {
           productId: "12",
           productSizeId: "987",
           quantity: 1,
+          sugarPercent: 100,
+          icePercent: 100,
           toppings: [{ toppingId: "45", quantity: 1 }],
         },
       ],
@@ -247,6 +267,24 @@ describe("Task 5 cart logic", () => {
     const payload = toCreateOrderPayload([line]);
 
     expect(await validate(plainToInstance(CreateOrderDto, payload))).toHaveLength(0);
+  });
+
+  it("rejects sugar or ice values that are not in the supported preference options", async () => {
+    const invalidPayload = {
+      items: [
+        {
+          productId: "12",
+          productSizeId: "987",
+          quantity: 1,
+          sugarPercent: 33,
+          icePercent: 70,
+        },
+      ],
+    };
+
+    expect(
+      await validate(plainToInstance(CreateOrderDto, invalidPayload)),
+    ).not.toHaveLength(0);
   });
 
   it("does not build an order item when the selected size is missing", () => {

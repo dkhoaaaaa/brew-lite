@@ -6,12 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { formatPrice } from "../../../lib/money";
 import { getOrderById, type CreatedOrderResponse } from "../../../lib/orders-api";
 
-interface StoredMockPayment {
-  method: "E_WALLET" | "BANK_CARD";
-  outcome: "SIMULATED_SUCCESS" | "SIMULATED_FAILURE";
-  timestamp: string;
-}
-
 export default function OrderConfirmationPage() {
   return (
     <Suspense
@@ -30,62 +24,19 @@ export default function OrderConfirmationPage() {
   );
 }
 
-function isCreatedOrderResponse(value: unknown): value is CreatedOrderResponse {
-  if (typeof value !== "object" || value === null) return false;
-  const order = value as Partial<CreatedOrderResponse>;
-  return (
-    typeof order.id === "string" &&
-    typeof order.orderCode === "string" &&
-    typeof order.status === "string" &&
-    typeof order.total === "number" &&
-    Number.isFinite(order.total) &&
-    Array.isArray(order.items)
-  );
-}
-
 function OrderConfirmationContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
 
   const [order, setOrder] = useState<CreatedOrderResponse | null>(null);
-  const [paymentInfo, setPaymentInfo] = useState<StoredMockPayment | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    if (!orderId) {
-      setError("Không tìm thấy mã đơn hàng cần xác nhận.");
-      setLoaded(true);
-      return;
-    }
+    if (!orderId) return;
 
-    // Đọc thông tin payment từ session nếu có
-    try {
-      const storedPaymentRaw = window.sessionStorage.getItem("lastMockPaymentResult");
-      if (storedPaymentRaw) {
-        const parsedPayment = JSON.parse(storedPaymentRaw) as StoredMockPayment;
-        setPaymentInfo(parsedPayment);
-      }
-    } catch {
-      // Ignore
-    }
-
-    // 1. Thử đọc từ sessionStorage
-    try {
-      const storedOrderRaw = window.sessionStorage.getItem("lastCreatedOrder");
-      const parsedOrder: unknown = storedOrderRaw ? JSON.parse(storedOrderRaw) : null;
-
-      if (isCreatedOrderResponse(parsedOrder) && parsedOrder.id === orderId) {
-        setOrder(parsedOrder);
-        setLoaded(true);
-        return;
-      }
-    } catch {
-      // Fallback API
-    }
-
-    // 2. Nếu session không có, gọi API lấy từ Backend
     getOrderById(orderId)
       .then((data) => {
         if (!active) return;
@@ -102,6 +53,52 @@ function OrderConfirmationContent() {
       active = false;
     };
   }, [orderId]);
+
+  const orderStatus = order?.status;
+  useEffect(() => {
+    if (!orderId || orderStatus !== "PENDING") {
+      return;
+    }
+    let active = true;
+    const interval = setInterval(() => {
+      getOrderById(orderId)
+        .then((updated) => {
+        if (active) {
+          setOrder(updated);
+          setRefreshWarning(null);
+        }
+      })
+      .catch((pollError: unknown) => {
+        if (active) {
+          setRefreshWarning(
+            pollError instanceof Error
+              ? pollError.message
+              : "Không thể làm mới trạng thái đơn hàng. Đang giữ nguyên trạng thái gần nhất.",
+          );
+        }
+        });
+    }, 4000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [orderId, orderStatus]);
+
+  if (!orderId) {
+    return (
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white border border-[#E5DFD7] rounded-2xl p-8 text-center shadow-sm">
+          <h2 className="text-xl font-bold text-[#30251D] mb-2 font-heading">
+            Không tìm thấy mã đơn hàng
+          </h2>
+          <p className="text-sm text-[#6F6258] mb-6">
+            Trở về từ VNPay không đủ để xác nhận thanh toán nếu không có đơn hàng hợp lệ.
+          </p>
+          <Link className="button button--dark" href="/orders">Đơn hàng của tôi</Link>
+        </div>
+      </main>
+    );
+  }
 
   if (!loaded) {
     return (
@@ -149,64 +146,69 @@ function OrderConfirmationContent() {
     );
   }
 
-  const paymentMethodLabel =
-    paymentInfo?.method === "BANK_CARD" || order.payments?.[0]?.method === "BANK_CARD"
-      ? "Thẻ ngân hàng (Mô phỏng)"
-      : "Ví điện tử (Mô phỏng)";
-
-  const formattedDate = paymentInfo?.timestamp
-    ? new Date(paymentInfo.timestamp).toLocaleString("vi-VN", {
+  const payment = order.payments?.[0];
+  const isPaid = ["PAID", "PREPARING", "READY", "COMPLETED"].includes(order.status);
+  const title = isPaid
+    ? "Thanh toán thành công"
+    : order.status === "PAYMENT_FAILED"
+      ? "Thanh toán không thành công"
+      : order.status === "CANCELLED"
+        ? "Đơn hàng đã hủy"
+        : "Đang xác nhận thanh toán";
+  const formattedDate = payment?.paidAt
+    ? new Date(payment.paidAt).toLocaleString("vi-VN", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
         minute: "2-digit",
       })
-    : order.payments?.[0]?.paidAt
-    ? new Date(order.payments[0].paidAt).toLocaleString("vi-VN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : new Date().toLocaleString("vi-VN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+    : "Chưa có xác nhận thanh toán";
 
   return (
     <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-10 px-4 sm:px-6 lg:px-8 text-[#30251D]">
       <div className="max-w-4xl mx-auto">
-        {/* Header với biểu tượng dấu tích thành công */}
         <header className="text-center mb-10">
           <div
-            className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#EBF8F2] text-[#22543D] border border-[#9AE6B4] text-2xl font-bold mb-4 shadow-xs"
+            className={`inline-flex items-center justify-center w-14 h-14 rounded-full text-2xl font-bold mb-4 shadow-xs ${
+              isPaid
+                ? "bg-[#EBF8F2] text-[#22543D] border border-[#9AE6B4]"
+                : "bg-[#F5EFE6] text-[#76513B] border border-[#DED6CB]"
+            }`}
             aria-hidden="true"
           >
-            ✓
+            {isPaid ? "✓" : order.status === "PAYMENT_FAILED" ? "!" : "…"}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#30251D] mb-2 font-heading">
-            Thanh toán thành công
+            {title}
           </h1>
           <p className="text-[#6B5E55] text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-            Cảm ơn bạn đã lựa chọn BrewLite. Đơn hàng đã được xác nhận thanh toán mô phỏng và cập nhật vào hệ thống.
+            {isPaid
+              ? "Backend đã xác nhận trạng thái đơn hàng."
+              : order.status === "PAYMENT_FAILED"
+                ? "VNPay đã báo giao dịch không thành công. Bạn có thể xem đơn hàng để thử lại nếu đơn còn hiệu lực."
+                : order.status === "CANCELLED"
+                  ? "Đơn hàng đã bị hủy và không còn hiệu lực."
+                  : "Đơn hàng vẫn đang chờ backend nhận và xác minh IPN từ VNPay. Không đóng dấu thành công từ trang này."}
           </p>
         </header>
+        {refreshWarning && (
+          <p className="mb-6 text-center text-sm text-amber-800" role="status">
+            {refreshWarning}
+          </p>
+        )}
 
-        {/* Thông báo tích 100 điểm thưởng thành công */}
-        <div className="mb-6 p-4 rounded-2xl bg-[#FAF7F2] border border-[#E7DECE] flex items-center gap-3.5 shadow-2xs">
-          <div className="w-11 h-11 rounded-full bg-[#EAE1D2] text-[#76513B] flex items-center justify-center text-xl font-bold shrink-0">
-            🪙
+        {isPaid && (order.pointsEarned ?? 0) > 0 && (
+          <div className="mb-6 p-4 rounded-2xl bg-[#FAF7F2] border border-[#E7DECE] flex items-center gap-3.5 shadow-2xs">
+            <div className="w-11 h-11 rounded-full bg-[#EAE1D2] text-[#76513B] flex items-center justify-center text-xl font-bold shrink-0">
+              +
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-[#30251D]">+{order.pointsEarned} điểm thành viên</h3>
+              <p className="text-xs text-[#76513B] mt-0.5">Điểm thành viên được cập nhật theo dữ liệu của đơn hàng.</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-[#30251D]">+100 điểm thành viên</h3>
-            <p className="text-xs text-[#76513B] mt-0.5">Bạn đã nhận được 100 điểm thưởng từ đơn hàng này.</p>
-          </div>
-        </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
           {/* Cột chính: Danh sách món & Tổng tiền */}
@@ -225,13 +227,9 @@ function OrderConfirmationContent() {
                     <p className="text-xs text-[#7D6F64] mb-1">
                       Size: {item.sizeCode} · Đơn giá: {formatPrice(String(item.unitPrice))}
                     </p>
-                    {(item.sugarPercent !== undefined || item.icePercent !== undefined) && (
-                      <p className="text-xs text-[#94867A]">
-                        {item.sugarPercent !== undefined ? `Đường ${item.sugarPercent}%` : ""}
-                        {item.sugarPercent !== undefined && item.icePercent !== undefined ? " · " : ""}
-                        {item.icePercent !== undefined ? `Đá ${item.icePercent}%` : ""}
-                      </p>
-                    )}
+                    <p className="text-xs text-[#94867A]">
+                      Đường {item.sugarPercent ?? 100}% · Đá {item.icePercent ?? 100}%
+                    </p>
                     {Array.isArray(item.toppings) && item.toppings.length > 0 && (
                       <p className="text-xs text-[#94867A] mt-0.5">
                         Topping: {item.toppings.map((t) => `${t.name} (x${t.quantity})`).join(", ")}
@@ -282,17 +280,25 @@ function OrderConfirmationContent() {
                 <div className="flex flex-col gap-1">
                   <span className="text-xs uppercase tracking-wider text-[#8C7E73]">Trạng thái hệ thống</span>
                   <div>
-                    <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#EBF8F2] text-[#22543D] border border-[#9AE6B4]">
+                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                      isPaid
+                        ? "bg-[#EBF8F2] text-[#22543D] border border-[#9AE6B4]"
+                        : "bg-[#F5EFE6] text-[#76513B] border border-[#DED6CB]"
+                    }`}>
                       {order.status}
                     </span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs uppercase tracking-wider text-[#8C7E73]">Phương thức mô phỏng</span>
-                  <span className="text-[15px] font-semibold text-[#30251D]">{paymentMethodLabel}</span>
+                  <span className="text-xs uppercase tracking-wider text-[#8C7E73]">Cổng thanh toán</span>
+                  <span className="text-[15px] font-semibold text-[#30251D]">{payment?.method ?? "VNPay"}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs uppercase tracking-wider text-[#8C7E73]">Thời gian hoàn tất</span>
+                  <span className="text-xs uppercase tracking-wider text-[#8C7E73]">Trạng thái thanh toán</span>
+                  <span className="text-[15px] font-semibold text-[#30251D]">{payment?.status ?? "PENDING"}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs uppercase tracking-wider text-[#8C7E73]">Thời gian thanh toán</span>
                   <span className="text-sm text-[#30251D]">{formattedDate}</span>
                 </div>
               </div>
@@ -304,7 +310,7 @@ function OrderConfirmationContent() {
                 Lưu ý thử nghiệm
               </h3>
               <p className="text-xs text-[#6B5E55] leading-relaxed">
-                Đơn hàng đã được lưu và cập nhật trạng thái PAID trong cơ sở dữ liệu. Đây là giao dịch thanh toán mô phỏng trong môi trường phát triển.
+                Trang này chỉ hiển thị trạng thái mới nhất truy vấn từ backend. Return URL của VNPay không tự xác nhận thanh toán.
               </p>
             </div>
 

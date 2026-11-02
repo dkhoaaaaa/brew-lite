@@ -17,7 +17,7 @@ import {
 // id là BigInt nên client gửi dạng chuỗi số, ví dụ "12".
 const ID_PATTERN = /^\d{1,18}$/;
 const ID_MESSAGE = "must be a positive integer string";
-const PERCENT_VALUES = [0, 30, 50, 70, 100];
+export const PERCENT_VALUES = [0, 30, 50, 70, 100];
 
 export class OrderItemToppingDto {
   @Matches(ID_PATTERN, { message: `toppingId ${ID_MESSAGE}` })

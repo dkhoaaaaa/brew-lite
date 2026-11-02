@@ -1,10 +1,9 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
-  NotFoundException,
 } from "@nestjs/common";
 import {
   OrdersService,
@@ -131,6 +130,19 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildVoucherTransaction(overrides: Record<string, unknown> = {}) {
+  const prisma = buildPrisma(overrides);
+  const tx = {
+    $queryRaw: vi.fn(),
+    order: prisma.order,
+    promotion: prisma.promotion,
+  };
+  prisma.$transaction = vi.fn(
+    async (callback: (client: typeof tx) => unknown) => callback(tx),
+  );
+  return { prisma, tx };
+}
+
 const validDto = (): CreateOrderDto => ({
   items: [
     {
@@ -210,7 +222,7 @@ describe("OrdersService.create", () => {
 });
 
 describe("OrdersService.findMyOrders & cleanupExpiredOrders", () => {
-  it("dọn dẹp các đơn PENDING quá 2 phút và trả về danh sách đơn còn hiệu lực", async () => {
+  it("dọn dẹp các đơn PENDING đã hết hạn và trả về danh sách đơn còn hiệu lực", async () => {
     const prisma = buildPrisma({
       order: {
         findMany: vi.fn()
@@ -248,128 +260,6 @@ describe("OrdersService.findMyOrders & cleanupExpiredOrders", () => {
     expect(result[0].id).toBe("10");
     expect(result[0].status).toBe("PENDING");
     expect(prisma.order.deleteMany).toHaveBeenCalled();
-  });
-});
-
-describe("OrdersService.processMockPayment", () => {
-  it("khi thanh toán thành công: cập nhật status thành PAID và ghi nhận Payment", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL20261025-ABC123",
-          status: "PENDING",
-          total: money(90000),
-          expiresAt: new Date(Date.now() + 100000),
-          payments: [],
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL20261025-ABC123",
-          status: "PAID",
-          total: money(90000),
-        }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    const res = await service.processMockPayment(10n, 1n, {
-      method: "E_WALLET",
-      outcome: "success",
-    });
-
-    expect(res.outcome).toBe("SIMULATED_SUCCESS");
-    expect(res.status).toBe("PAID");
-    expect(res.paymentStatus).toBe("SUCCESS");
-  });
-
-  it("khi thanh toán thất bại: cập nhật PAYMENT_FAILED và lưu Payment FAILED", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL20261025-ABC123",
-          status: "PENDING",
-          total: money(90000),
-          expiresAt: new Date(Date.now() + 100000),
-          payments: [],
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL20261025-ABC123",
-          status: "PAYMENT_FAILED",
-          total: money(90000),
-        }),
-      },
-      payment: {
-        create: vi.fn().mockResolvedValue({ id: 1n }),
-      },
-      orderStatusHistory: {
-        create: vi.fn().mockResolvedValue({ id: 1n }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    const res = await service.processMockPayment(10n, 1n, {
-      method: "BANK_CARD",
-      outcome: "failure",
-    });
-
-    expect(res.outcome).toBe("SIMULATED_FAILURE");
-    expect(res.status).toBe("PAYMENT_FAILED");
-    expect(res.paymentStatus).toBe("FAILED");
-  });
-
-  it("chặn khi user khác cố gắng thanh toán đơn hàng", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 2n, // Đơn thuộc user 2
-          status: "PENDING",
-        }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    await expect(
-      service.processMockPayment(10n, 1n, { method: "E_WALLET", outcome: "success" }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-  });
-
-  it("hủy đơn hàng đang PENDING hoặc PAYMENT_FAILED thành CANCELLED", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL20261025-ABC123",
-          status: "PAYMENT_FAILED",
-          total: money(90000),
-          orderItems: [],
-          payments: [],
-          statusHistory: [],
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL20261025-ABC123",
-          status: "CANCELLED",
-          total: money(90000),
-          orderItems: [],
-          payments: [],
-          statusHistory: [],
-        }),
-      },
-      orderStatusHistory: {
-        create: vi.fn().mockResolvedValue({ id: 1n }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    const cancelled = await service.cancelOrder(10n, 1n);
-    expect(cancelled.status).toBe("CANCELLED");
   });
 });
 
@@ -572,84 +462,9 @@ describe("OrdersService.autoTransitionByTime", () => {
 });
 
 describe("OrdersService.loyaltyAndVoucherIntegration", () => {
-  it("cộng 100 điểm khi thanh toán thành công và không cộng lặp lại (idempotent)", async () => {
-    const userUpdateMock = vi.fn().mockResolvedValue({ id: 1n, loyaltyPoints: 100 });
-    const prisma = buildPrisma({
-      user: {
-        findFirst: vi.fn().mockResolvedValue({ id: 1n }),
-        findUnique: vi.fn().mockResolvedValue({ id: 1n, loyaltyPoints: 0 }),
-        update: userUpdateMock,
-      },
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL20261027-ABC",
-          status: "PENDING",
-          total: money(90000),
-          pointsEarned: 0, // Chưa nhận điểm
-          expiresAt: new Date(Date.now() + 100000),
-          payments: [],
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL20261027-ABC",
-          status: "PAID",
-          pointsEarned: 100,
-          total: money(90000),
-        }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    const res1 = await service.processMockPayment(10n, 1n, { method: "E_WALLET", outcome: "success" });
-    expect(res1.status).toBe("PAID");
-    expect(res1.pointsEarned).toBe(100);
-    expect(userUpdateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 1n },
-        data: { loyaltyPoints: { increment: 100 } },
-      }),
-    );
-
-    // Lần 2: Đơn đã nhận 100 điểm trước đó
-    userUpdateMock.mockClear();
-    const prismaAlreadyAwarded = buildPrisma({
-      user: {
-        findFirst: vi.fn().mockResolvedValue({ id: 1n }),
-        findUnique: vi.fn().mockResolvedValue({ id: 1n, loyaltyPoints: 100 }),
-        update: userUpdateMock,
-      },
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL20261027-ABC",
-          status: "PAID",
-          total: money(90000),
-          pointsEarned: 100, // Đã có điểm thưởng rồi!
-          expiresAt: new Date(Date.now() + 100000),
-          payments: [],
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL20261027-ABC",
-          status: "PAID",
-          pointsEarned: 100,
-          total: money(90000),
-        }),
-      },
-    });
-    const serviceAlreadyAwarded = new OrdersService(prismaAlreadyAwarded as never);
-    const res2 = await serviceAlreadyAwarded.processMockPayment(10n, 1n, { method: "E_WALLET", outcome: "success" });
-
-    expect(res2.pointsEarned).toBe(0);
-    expect(userUpdateMock).not.toHaveBeenCalled();
-  });
-
   it("áp dụng voucher hợp lệ: trừ tiền và cập nhật tổng tiền đơn hàng", async () => {
     const now = new Date();
-    const prisma = buildPrisma({
+    const { prisma, tx } = buildVoucherTransaction({
       order: {
         findUnique: vi.fn().mockResolvedValue({
           id: 10n,
@@ -696,11 +511,12 @@ describe("OrdersService.loyaltyAndVoucherIntegration", () => {
     expect(updated.discountAmount).toBe(10000);
     expect(updated.total).toBe(40000); // 50.000 - 10.000 = 40.000
     expect(updated.promotionId).toBe("99");
+    expect(tx.$queryRaw).toHaveBeenCalledOnce();
   });
 
   it("từ chối áp dụng voucher khi voucher thuộc về người dùng khác", async () => {
     const now = new Date();
-    const prisma = buildPrisma({
+    const { prisma } = buildVoucherTransaction({
       order: {
         findUnique: vi.fn().mockResolvedValue({
           id: 10n,
@@ -726,6 +542,50 @@ describe("OrdersService.loyaltyAndVoucherIntegration", () => {
     await expect(service.applyVoucher(10n, 1n, "BLV200-OTHER")).rejects.toThrow(
       "Mã khuyến mại này không thuộc về tài khoản của bạn.",
     );
+  });
+
+  it("không áp dụng voucher khi payment VNPay đang chờ xử lý", async () => {
+    const { prisma, tx } = buildVoucherTransaction({
+      order: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10n,
+          userId: 1n,
+          status: "PENDING",
+          subtotal: money(50000),
+          payments: [{ provider: "VNPAY", status: "PENDING" }],
+        }),
+        update: vi.fn(),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    await expect(service.applyVoucher(10n, 1n, "BLV200-ABC")).rejects.toThrow(
+      "Không thể thay đổi voucher khi đang có giao dịch VNPay chờ xử lý.",
+    );
+    expect(tx.$queryRaw).toHaveBeenCalledOnce();
+    expect(prisma.order.update).not.toHaveBeenCalled();
+  });
+
+  it("không gỡ voucher khi payment VNPay đang chờ xử lý", async () => {
+    const { prisma, tx } = buildVoucherTransaction({
+      order: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 10n,
+          userId: 1n,
+          status: "PENDING",
+          subtotal: money(50000),
+          payments: [{ provider: "VNPAY", status: "PENDING" }],
+        }),
+        update: vi.fn(),
+      },
+    });
+    const service = new OrdersService(prisma as never);
+
+    await expect(service.removeVoucher(10n, 1n)).rejects.toThrow(
+      "Không thể thay đổi voucher khi đang có giao dịch VNPay chờ xử lý.",
+    );
+    expect(tx.$queryRaw).toHaveBeenCalledOnce();
+    expect(prisma.order.update).not.toHaveBeenCalled();
   });
 });
 
@@ -841,32 +701,40 @@ describe("Task 10.3 - Concurrent Stock Control with Optimistic Locking", () => {
 
   it("hoàn lại số lượng tồn kho khi người dùng hủy đơn hàng (cancelOrder)", async () => {
     const productUpdateMock = vi.fn().mockResolvedValue({ id: 1n });
-    const prisma = buildPrisma({
+    const currentOrder = { id: 10n, userId: 1n, status: "PENDING" };
+    const cancelledOrder = {
+      id: 10n,
+      orderCode: "BL-CANCEL",
+      status: "CANCELLED",
+      subtotal: money(50000),
+      total: money(50000),
+      orderItems: [],
+      payments: [],
+      statusHistory: [],
+    };
+    const tx = {
+      $queryRaw: vi.fn(),
       order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          status: "PENDING",
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL-CANCEL",
-          status: "CANCELLED",
-          subtotal: money(50000),
-          total: money(50000),
-        }),
+        findUnique: vi.fn()
+          .mockResolvedValueOnce(currentOrder)
+          .mockResolvedValueOnce(cancelledOrder),
+        update: vi.fn().mockResolvedValue(cancelledOrder),
       },
       orderItem: {
         findMany: vi.fn().mockResolvedValue([
           { productId: 1n, quantity: 2, toppings: [{ toppingId: 5n, quantity: 2 }] },
         ]),
       },
-      product: {
-        update: productUpdateMock,
+      product: { update: productUpdateMock },
+      topping: { update: vi.fn().mockResolvedValue({ id: 5n }) },
+      payment: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      orderStatusHistory: { create: vi.fn().mockResolvedValue({ id: 1n }) },
+    };
+    const prisma = buildPrisma({
+      order: {
+        findUnique: vi.fn().mockResolvedValue(currentOrder),
       },
-      topping: {
-        update: vi.fn().mockResolvedValue({ id: 5n }),
-      },
+      $transaction: vi.fn(async (callback) => callback(tx)),
     });
     const service = new OrdersService(prisma as never);
 
@@ -923,6 +791,7 @@ describe("Task 10.2 - Idempotent Order Creation & Payment", () => {
   it("trả về đơn hàng cũ khi gọi create với cùng Idempotency-Key", async () => {
     const existingOrder = {
       id: 88n,
+      userId: 1n,
       orderCode: "BL-IDEMPOTENT-ORDER",
       status: "PENDING",
       subtotal: money(40000),
@@ -939,6 +808,14 @@ describe("Task 10.2 - Idempotent Order Creation & Payment", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: 1n,
           idempotencyKey: "KEY-12345",
+          provider: "BREWLITE",
+          rawResponse: {
+            orderRequestFingerprint: createHash("sha256")
+              .update(JSON.stringify({
+                items: [{ productId: "1", productSizeId: "2", quantity: 1 }],
+              }))
+              .digest("hex"),
+          },
           order: existingOrder,
         }),
       },
@@ -947,7 +824,6 @@ describe("Task 10.2 - Idempotent Order Creation & Payment", () => {
 
     const dto: CreateOrderDto = {
       items: [{ productId: "1", productSizeId: "2", quantity: 1 }],
-      idempotencyKey: "KEY-12345",
     };
 
     const result = await service.create(1n, dto, "KEY-12345");
@@ -956,93 +832,6 @@ describe("Task 10.2 - Idempotent Order Creation & Payment", () => {
     expect(prisma.product.findMany).not.toHaveBeenCalled();
   });
 
-  it("trả về kết quả thành công mà không tạo thêm payment khi gửi lại cùng Idempotency-Key trong mock payment", async () => {
-    const existingPayment = {
-      id: 101n,
-      orderId: 10n,
-      idempotencyKey: "PAY-IDEMP-999",
-      status: "SUCCESS",
-      order: {
-        id: 10n,
-        orderCode: "BL-PAID-ALREADY",
-        status: "PAID",
-      },
-    };
-
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL-PAID-ALREADY",
-          status: "PAID",
-        }),
-      },
-      payment: {
-        findUnique: vi.fn().mockResolvedValue(existingPayment),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    const res = await service.processMockPayment(10n, 1n, {
-      method: "E_WALLET",
-      outcome: "success",
-      idempotencyKey: "PAY-IDEMP-999",
-    }, "PAY-IDEMP-999");
-
-    expect(res.outcome).toBe("SIMULATED_SUCCESS");
-    expect(res.status).toBe("PAID");
-    expect(res.message).toContain("Idempotent");
-    expect(prisma.user.update).not.toHaveBeenCalled();
-  });
-
-  it("xử lý an toàn khi xảy ra lỗi P2002 (unique constraint race condition trên Idempotency-Key)", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          orderCode: "BL-RACE-P2002",
-          status: "PENDING",
-          total: money(50000),
-          pointsEarned: 0,
-        }),
-        update: vi.fn().mockResolvedValue({
-          id: 10n,
-          orderCode: "BL-RACE-P2002",
-          status: "PAID",
-          total: money(50000),
-        }),
-      },
-      payment: {
-        create: vi.fn().mockResolvedValue({ id: 1n }),
-        findUnique: vi.fn()
-          .mockResolvedValueOnce(null)
-          .mockResolvedValueOnce({
-            id: 202n,
-            orderId: 10n,
-            idempotencyKey: "RACE-KEY",
-            status: "SUCCESS",
-            order: { id: 10n, orderCode: "BL-RACE-P2002", status: "PAID" },
-          }),
-      },
-      $transaction: vi.fn().mockRejectedValue({ code: "P2002" }),
-    });
-    const service = new OrdersService(prisma as never);
-
-    const result = await service.processMockPayment(10n, 1n, {
-      method: "BANK_CARD",
-      outcome: "success",
-      idempotencyKey: "RACE-KEY",
-    });
-
-    expect(result.outcome).toBe("SIMULATED_SUCCESS");
-    expect(result.status).toBe("PAID");
-    expect(result.message).toContain("Idempotent");
-  });
-});
-
-describe("Task 10.1 - State Machine Validation", () => {
   it("chặn chuyển trạng thái từ PENDING trực tiếp sang READY hoặc COMPLETED", () => {
     expect(() => validateStateTransition("PENDING", "READY")).toThrow(BadRequestException);
     expect(() => validateStateTransition("PENDING", "COMPLETED")).toThrow(BadRequestException);
@@ -1069,21 +858,4 @@ describe("Task 10.1 - State Machine Validation", () => {
     await expect(service.cancelOrder(10n, 1n)).rejects.toThrow(BadRequestException);
   });
 
-  it("chặn thanh toán khi đơn đã CANCELLED hoặc COMPLETED", async () => {
-    const prisma = buildPrisma({
-      order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          status: "CANCELLED",
-        }),
-      },
-    });
-    const service = new OrdersService(prisma as never);
-
-    await expect(service.processMockPayment(10n, 1n, {
-      method: "E_WALLET",
-      outcome: "success",
-    })).rejects.toThrow(BadRequestException);
-  });
 });

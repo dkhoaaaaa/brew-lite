@@ -34,6 +34,8 @@ export type ConfiguredProduct = {
   productImageUrl: string | null;
   size: ProductSizeOption | null;
   toppings: ToppingOption[];
+  sugarPercent: number;
+  icePercent: number;
   unitPrice: string;
   quantity: number;
 };
