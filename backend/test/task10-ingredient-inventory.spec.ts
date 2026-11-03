@@ -354,10 +354,10 @@ describe("TASK 10 - Kiểm soát tồn kho nguyên liệu khi đặt hàng đồ
   });
 
   // ---------------------------------------------------------------------------
-  // Test 6 – Thanh toán trùng lặp (Idempotent)
+  // Test 6 – Yêu cầu tạo đơn trùng lặp (Idempotent)
   // ---------------------------------------------------------------------------
-  it("Test 6: Thanh toán trùng lặp - gửi 2 lần cùng Idempotency-Key -> không trừ nguyên liệu 2 lần", async () => {
-    const { prismaMock, ingredientStore, ordersStore } = createPrismaMock(
+  it("Test 6: Gửi 2 lần cùng Idempotency-Key -> không tạo đơn trùng, không trừ nguyên liệu 2 lần", async () => {
+    const { prismaMock, ingredientStore } = createPrismaMock(
       [
         { id: 1n, name: "Bột cà phê", unit: "g", stockQuantity: 100, version: 0, isActive: true },
         { id: 2n, name: "Sữa", unit: "ml", stockQuantity: 500, version: 0, isActive: true },
@@ -369,32 +369,26 @@ describe("TASK 10 - Kiểm soát tồn kho nguyên liệu khi đặt hàng đồ
     );
 
     const service = new OrdersService(prismaMock as never);
+    const idempotencyKey = "PAY-IDEMP-TASK10-UNIQUE";
 
-    // 1. Khách tạo đơn hàng
     const dto: CreateOrderDto = {
       items: [{ productId: "1", productSizeId: "10", quantity: 1 }],
+      idempotencyKey,
     };
-    const order = await service.create(1n, dto);
-    expect(order.status).toBe("PENDING");
+
+    // 1. Tạo đơn lần 1 với Idempotency-Key
+    const order1 = await service.create(1n, dto, idempotencyKey);
+    expect(order1.status).toBe("PENDING");
 
     // Tồn kho đã trừ cho 1 ly: còn 80g cà phê và 350ml sữa
     expect(ingredientStore.get("1")!.stockQuantity).toBe(80);
     expect(ingredientStore.get("2")!.stockQuantity).toBe(350);
 
-    // 2. Thanh toán lần 1 với Idempotency-Key
-    const idempotencyKey = "PAY-IDEMP-TASK10-UNIQUE";
-    const paymentDto = { method: "E_WALLET" as const, outcome: "success" as const, idempotencyKey };
+    // 2. Gửi lại lần 2 với cùng Idempotency-Key
+    const order2 = await service.create(1n, dto, idempotencyKey);
+    expect(order2.id).toBe(order1.id);
 
-    const res1 = await service.processMockPayment(BigInt(order.id), 1n, paymentDto, idempotencyKey);
-    expect(res1.status).toBe("PAID");
-    expect(res1.outcome).toBe("SIMULATED_SUCCESS");
-
-    // 3. Thanh toán lần 2 với cùng Idempotency-Key
-    const res2 = await service.processMockPayment(BigInt(order.id), 1n, paymentDto, idempotencyKey);
-    expect(res2.status).toBe("PAID");
-    expect(res2.message).toContain("Idempotent");
-
-    // 4. Đảm bảo nguyên liệu không bị trừ thêm lần nào nữa
+    // 3. Đảm bảo nguyên liệu không bị trừ thêm lần nào nữa
     expect(ingredientStore.get("1")!.stockQuantity).toBe(80);
     expect(ingredientStore.get("2")!.stockQuantity).toBe(350);
   });

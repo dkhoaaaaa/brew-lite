@@ -51,7 +51,7 @@ import { PrismaService } from "../../prisma/prisma.service.js";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
 
 function getPendingTtlMs(): number {
-  const minutes = Number(process.env.PAYMENT_TTL_MINUTES ?? 2);
+  const minutes = Number(process.env.PAYMENT_TTL_MINUTES ?? 5);
   if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > 1440) {
     throw new Error("PAYMENT_TTL_MINUTES must be an integer between 1 and 1440.");
   }

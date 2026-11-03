@@ -78,7 +78,7 @@ export class PaymentsService {
 
       let expiresAt = order.expiresAt;
       if (!expiresAt) {
-        const ttlMinutes = this.config.get<number>("payment.ttlMinutes") ?? 2;
+        const ttlMinutes = this.config.get<number>("payment.ttlMinutes") ?? 5;
         if (!Number.isSafeInteger(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > 1440) {
           throw new ServiceUnavailableException(
             "PAYMENT_TTL_MINUTES must be an integer between 1 and 1440.",
@@ -198,8 +198,7 @@ export class PaymentsService {
       !/^\d+$/.test(params.vnp_Amount ?? "") ||
       !/^\d+$/.test(params.vnp_TransactionNo ?? "") ||
       !/^\d{2}$/.test(params.vnp_ResponseCode ?? "") ||
-      !/^\d{2}$/.test(params.vnp_TransactionStatus ?? "") ||
-      params.vnp_CurrCode !== "VND"
+      !/^\d{2}$/.test(params.vnp_TransactionStatus ?? "")
     ) {
       return { RspCode: "99", Message: "Invalid callback data" };
     }

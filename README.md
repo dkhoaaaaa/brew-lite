@@ -214,7 +214,7 @@ Thanh toán sử dụng VNPay Sandbox. Checkout chỉ khởi tạo giao dịch �
 1. Sao chép `.env.example` thành `.env` nếu chưa có, sau đó điền `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET` do tài khoản Sandbox cấp. Không đưa Hash Secret vào frontend, không commit `.env`.
 2. Giữ `VNPAY_PAYMENT_URL` ở Sandbox và đặt `VNPAY_RETURN_URL` trỏ đến `http://localhost:3001/payments/vnpay/return` cho môi trường phát triển.
 3. Đặt URL IPN trong cấu hình merchant VNPay thành `https://<host-cong-khai>/payments/vnpay/ipn`. IPN phải dùng HTTPS và có thể truy cập công khai; chỉ cấu hình Return URL là chưa đủ để kiểm thử callback server-to-server.
-4. Chạy `pnpm dev`. Đặt `PAYMENT_TTL_MINUTES` theo khoảng thời gian muốn kiểm thử (số nguyên từ 1 đến 1440; mặc định 2 phút). Thay đổi TTL chỉ áp dụng cho đơn tạo mới.
+4. Chạy `pnpm dev`. Đặt `PAYMENT_TTL_MINUTES` theo khoảng thời gian muốn kiểm thử (số nguyên từ 1 đến 1440; mặc định 5 phút). Thay đổi TTL chỉ áp dụng cho đơn tạo mới.
 5. Đăng nhập, tạo đơn, chọn VNPay Sandbox và hoàn tất giao dịch bằng phương thức/thông tin kiểm thử trong tài liệu Sandbox chính thức. Sau khi VNPay quay lại, trang xác nhận tiếp tục truy vấn trạng thái thật từ backend.
 
 Các endpoint tích hợp:

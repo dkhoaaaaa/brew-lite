@@ -11,7 +11,7 @@ export default () => ({
   },
 
   payment: {
-    ttlMinutes: Number(process.env.PAYMENT_TTL_MINUTES ?? 2),
+    ttlMinutes: Number(process.env.PAYMENT_TTL_MINUTES ?? 5),
     vnpay: {
       paymentUrl:
         process.env.VNPAY_PAYMENT_URL ??
