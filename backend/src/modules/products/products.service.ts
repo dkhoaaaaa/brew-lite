@@ -5,6 +5,46 @@ import { PrismaService } from "../../prisma/prisma.service.js";
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Tính số lượng sản phẩm tối đa có thể bán dựa trên công thức và tồn kho nguyên liệu.
+   * availableQuantity = MIN(FLOOR(ingredientStock / requiredQuantity))
+   * Nếu thiếu công thức hoặc nguyên liệu không đủ -> sản phẩm coi như hết hàng.
+   */
+  calculateStockFromRecipes(
+    recipes?: Array<{
+      quantity: any;
+      ingredient?: { stockQuantity: any; isActive: boolean } | null;
+    }>,
+  ): { availableQuantity: number; isOutOfStock: boolean } {
+    if (!recipes || recipes.length === 0) {
+      return { availableQuantity: 0, isOutOfStock: true };
+    }
+
+    let minCups = Infinity;
+
+    for (const r of recipes) {
+      if (!r.ingredient || !r.ingredient.isActive) {
+        return { availableQuantity: 0, isOutOfStock: true };
+      }
+
+      const reqQty = Number(r.quantity);
+      const stockQty = Number(r.ingredient.stockQuantity);
+
+      if (reqQty <= 0) continue;
+
+      const cups = Math.floor(stockQty / reqQty);
+      if (cups < minCups) {
+        minCups = cups;
+      }
+    }
+
+    const availableQuantity = minCups === Infinity ? 0 : Math.max(0, minCups);
+    return {
+      availableQuantity,
+      isOutOfStock: availableQuantity <= 0,
+    };
+  }
+
   async findAll() {
     const products = await this.prisma.product.findMany({
       where: { isActive: true },
@@ -16,27 +56,45 @@ export class ProductsService {
         price: true,
         imageUrl: true,
         categoryId: true,
+        stock: true,
         category: {
           select: {
             id: true,
             name: true,
           },
         },
+        productRecipes: {
+          select: {
+            quantity: true,
+            ingredient: {
+              select: {
+                stockQuantity: true,
+                isActive: true,
+              },
+            },
+          },
+        },
       },
     });
 
-    return products.map((product) => ({
-      id: product.id.toString(),
-      name: product.name,
-      description: product.description,
-      price: product.price.toString(),
-      imageUrl: product.imageUrl,
-      categoryId: product.categoryId ? product.categoryId.toString() : null,
-      categoryName: product.category?.name ?? null,
-    }));
+    return products.map((product) => {
+      const stockInfo = this.calculateStockFromRecipes(product.productRecipes);
+      return {
+        id: product.id.toString(),
+        name: product.name,
+        description: product.description,
+        price: product.price.toString(),
+        imageUrl: product.imageUrl,
+        categoryId: product.categoryId ? product.categoryId.toString() : null,
+        categoryName: product.category?.name ?? null,
+        stock: stockInfo.availableQuantity,
+        availableQuantity: stockInfo.availableQuantity,
+        isOutOfStock: stockInfo.isOutOfStock,
+      };
+    });
   }
 
-  // Hàm phục vụ Phân trang (Đã bổ sung categoryId và categoryName chuẩn xác)//
+  // Hàm phục vụ Phân trang
   async findAllPaginated(page: number = 1, limit: number = 5) {
     const skip = (page - 1) * limit;
 
@@ -53,10 +111,22 @@ export class ProductsService {
           price: true,
           imageUrl: true,
           categoryId: true,
+          stock: true,
           category: {
             select: {
               id: true,
               name: true,
+            },
+          },
+          productRecipes: {
+            select: {
+              quantity: true,
+              ingredient: {
+                select: {
+                  stockQuantity: true,
+                  isActive: true,
+                },
+              },
             },
           },
         },
@@ -66,15 +136,21 @@ export class ProductsService {
       }),
     ]);
 
-    const formattedProducts = products.map((product) => ({
-      id: product.id.toString(),
-      name: product.name,
-      description: product.description,
-      price: product.price.toString(),
-      imageUrl: product.imageUrl,
-      categoryId: product.categoryId ? product.categoryId.toString() : null,
-      categoryName: product.category?.name ?? null,
-    }));
+    const formattedProducts = products.map((product) => {
+      const stockInfo = this.calculateStockFromRecipes(product.productRecipes);
+      return {
+        id: product.id.toString(),
+        name: product.name,
+        description: product.description,
+        price: product.price.toString(),
+        imageUrl: product.imageUrl,
+        categoryId: product.categoryId ? product.categoryId.toString() : null,
+        categoryName: product.category?.name ?? null,
+        stock: stockInfo.availableQuantity,
+        availableQuantity: stockInfo.availableQuantity,
+        isOutOfStock: stockInfo.isOutOfStock,
+      };
+    });
 
     return {
       data: formattedProducts,
@@ -98,10 +174,22 @@ export class ProductsService {
         price: true,
         imageUrl: true,
         categoryId: true,
+        stock: true,
         category: {
           select: {
             id: true,
             name: true,
+          },
+        },
+        productRecipes: {
+          select: {
+            quantity: true,
+            ingredient: {
+              select: {
+                stockQuantity: true,
+                isActive: true,
+              },
+            },
           },
         },
         productSizes: {
@@ -131,6 +219,8 @@ export class ProductsService {
 
     if (!product) return null;
 
+    const stockInfo = this.calculateStockFromRecipes(product.productRecipes);
+
     return {
       id: product.id.toString(),
       name: product.name,
@@ -139,6 +229,9 @@ export class ProductsService {
       imageUrl: product.imageUrl,
       categoryId: product.categoryId ? product.categoryId.toString() : null,
       categoryName: product.category?.name ?? null,
+      stock: stockInfo.availableQuantity,
+      availableQuantity: stockInfo.availableQuantity,
+      isOutOfStock: stockInfo.isOutOfStock,
       sizes: product.productSizes.map((size) => ({
         id: size.id.toString(),
         sizeCode: size.sizeCode,

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useCart } from "../../features/cart/cart-store";
 import { formatPrice, fromMinorUnits, toMinorUnits } from "../../lib/money";
 import { createOrder } from "../../lib/orders-api";
@@ -44,8 +44,9 @@ function CartContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const submissionLock = useRef(false);
   const autoCheckoutTriggered = useRef(false);
+  const orderKeyRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
-  async function handleCreateOrder() {
+  const handleCreateOrder = useCallback(async () => {
     if (submissionLock.current || items.length === 0) return;
     setErrorMessage(null);
 
@@ -75,8 +76,47 @@ function CartContent() {
     submissionLock.current = true;
     setIsSubmitting(true);
     try {
-      const createdOrder = await createOrder(orderPayload, user.id);
-      window.sessionStorage.setItem("lastCreatedOrder", JSON.stringify(createdOrder));
+      const requestFingerprint = JSON.stringify(orderPayload);
+      let idempotencyKey = "";
+      if (orderKeyRef.current?.fingerprint === requestFingerprint) {
+        idempotencyKey = orderKeyRef.current.key;
+      }
+      try {
+        const stored = window.sessionStorage.getItem("brewlite-create-order-key");
+        const parsed: unknown = stored ? JSON.parse(stored) : null;
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          "fingerprint" in parsed &&
+          parsed.fingerprint === requestFingerprint &&
+          "key" in parsed &&
+          typeof parsed.key === "string"
+        ) {
+          idempotencyKey = parsed.key;
+        }
+      } catch {
+        idempotencyKey = "";
+      }
+      if (!idempotencyKey) {
+        idempotencyKey = crypto.randomUUID();
+        orderKeyRef.current = { fingerprint: requestFingerprint, key: idempotencyKey };
+        try {
+          window.sessionStorage.setItem(
+            "brewlite-create-order-key",
+            JSON.stringify({ fingerprint: requestFingerprint, key: idempotencyKey }),
+          );
+        } catch {
+          // Keep the key in memory when browser storage is unavailable.
+        }
+      }
+
+      const createdOrder = await createOrder(orderPayload, user.id, idempotencyKey);
+      orderKeyRef.current = null;
+      try {
+        window.sessionStorage.removeItem("brewlite-create-order-key");
+      } catch {
+        // The server order was created; unavailable browser storage is non-fatal.
+      }
       try {
         window.localStorage.removeItem("brewlite_guest_cart_snapshot");
       } catch {
@@ -94,7 +134,7 @@ function CartContent() {
       submissionLock.current = false;
       setIsSubmitting(false);
     }
-  }
+  }, [clearCart, isAuthenticated, items, router, user]);
 
   // Khôi phục giỏ hàng nếu quay lại sau khi đăng nhập mà state chưa kịp load
   useEffect(() => {
@@ -129,7 +169,15 @@ function CartContent() {
       autoCheckoutTriggered.current = true;
       handleCreateOrder();
     }
-  }, [autoCheckout, isAuthenticated, user?.id, hydrated, items.length, isSubmitting]);
+  }, [
+    autoCheckout,
+    isAuthenticated,
+    user?.id,
+    hydrated,
+    items.length,
+    isSubmitting,
+    handleCreateOrder,
+  ]);
 
   if (!hydrated || (autoCheckout && isSubmitting)) {
     return (
@@ -190,6 +238,7 @@ function CartContent() {
                 <h2>{item.productName}</h2>
                 <p>{item.size ? `Size ${item.size.sizeCode}` : "Không chọn size"}</p>
                 <p>{item.toppings.length ? item.toppings.map((topping) => topping.name).join(", ") : "Không topping"}</p>
+                <p>Đường {item.sugarPercent}% · Đá {item.icePercent}%</p>
                 <strong>{formatPrice(item.unitPrice)} / món</strong>
               </div>
               <div className="cart-line__controls">

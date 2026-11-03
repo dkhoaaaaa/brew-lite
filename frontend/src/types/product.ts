@@ -18,6 +18,9 @@ export type ProductSummary = {
   imageUrl: string | null;
   categoryId?: string | null;
   categoryName?: string | null;
+  stock?: number;
+  availableQuantity?: number;
+  isOutOfStock?: boolean;
 };
 
 export type ProductDetailData = ProductSummary & {
@@ -31,6 +34,8 @@ export type ConfiguredProduct = {
   productImageUrl: string | null;
   size: ProductSizeOption | null;
   toppings: ToppingOption[];
+  sugarPercent: number;
+  icePercent: number;
   unitPrice: string;
   quantity: number;
 };

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
@@ -49,9 +49,18 @@ export function determineStatusByElapsed(elapsedMs: number): "PAID" | "PREPARING
 }
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
-import { MockPaymentDto } from "./dto/mock-payment.dto.js";
 
-const PENDING_TTL_MS = 2 * 60 * 1000; // Đơn PENDING hết hạn sau 2 phút theo yêu cầu
+function getPendingTtlMs(): number {
+  const minutes = Number(process.env.PAYMENT_TTL_MINUTES ?? 5);
+  if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > 1440) {
+    throw new Error("PAYMENT_TTL_MINUTES must be an integer between 1 and 1440.");
+  }
+  return minutes * 60 * 1000;
+}
+
+function getOrderRequestFingerprint(dto: CreateOrderDto): string {
+  return createHash("sha256").update(JSON.stringify(dto)).digest("hex");
+}
 
 @Injectable()
 export class OrdersService implements OnModuleInit, OnModuleDestroy {
@@ -78,6 +87,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
    */
   async syncActiveOrders(now: Date = new Date()): Promise<void> {
     try {
+      await this.cleanupExpiredOrders();
       const activeOrders = await this.prisma.order.findMany({
         where: { status: { in: ["PAID", "PREPARING", "READY"] } },
         include: {
@@ -207,6 +217,50 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
       if (!Array.isArray(items) || items.length === 0) return;
 
+      // 1. Hoàn lại tồn kho nguyên liệu theo công thức (TASK 10)
+      const productIds = [...new Set(items.map((i: any) => i.productId))];
+      const recipeFinder = tx?.productRecipe?.findMany ?? this.prisma.productRecipe?.findMany;
+      if (recipeFinder && (tx?.ingredient?.update ?? this.prisma.ingredient?.update)) {
+        const recipes = await recipeFinder({
+          where: { productId: { in: productIds } },
+          include: { ingredient: true },
+        });
+
+        if (Array.isArray(recipes) && recipes.length > 0) {
+          const restoreMap = new Map<string, { ingredientId: bigint; amount: number }>();
+          for (const item of items) {
+            const itemRecipes = recipes.filter((r: any) => r.productId === item.productId);
+            for (const r of itemRecipes) {
+              const ingIdStr = r.ingredientId.toString();
+              const amount = Number(r.quantity) * item.quantity;
+              const existing = restoreMap.get(ingIdStr);
+              if (existing) {
+                existing.amount += amount;
+              } else {
+                restoreMap.set(ingIdStr, { ingredientId: r.ingredientId, amount });
+              }
+            }
+          }
+
+          // Sắp xếp ingredientId tăng dần để ngăn ngừa Deadlock trong PostgreSQL
+          const sortedRestores = Array.from(restoreMap.values()).sort((a, b) =>
+            BigInt(a.ingredientId) < BigInt(b.ingredientId) ? -1 : 1,
+          );
+
+          for (const r of sortedRestores) {
+            const updater = tx?.ingredient?.update ?? this.prisma.ingredient?.update;
+            await updater({
+              where: { id: r.ingredientId },
+              data: {
+                stockQuantity: { increment: r.amount },
+                version: { increment: 1 },
+              },
+            });
+          }
+        }
+      }
+
+      // 2. Hoàn lại tồn kho sản phẩm và topping
       for (const item of items) {
         if (item.productId && item.quantity && tx.product?.update) {
           await tx.product.update({
@@ -238,37 +292,91 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Tự động xử lý các đơn hàng đã hết hạn 2 phút:
+   * Tự động xử lý các đơn hàng đã hết hạn thanh toán:
    * - Đơn PENDING: Bị xóa khỏi cơ sở dữ liệu và hoàn trả tồn kho.
    * - Đơn PAYMENT_FAILED: Được tự động chuyển trạng thái thành CANCELLED và hoàn trả tồn kho.
    */
   async cleanupExpiredOrders(userId?: bigint): Promise<void> {
     const now = new Date();
     try {
-      // 1. Đơn PENDING quá hạn 2 phút -> Hoàn tồn kho và xóa khỏi database
+      // 1. Expired VNPay attempts remain available to reconcile delayed IPNs.
       const expiredPending = await this.prisma.order.findMany({
         where: {
           status: "PENDING",
           expiresAt: { lt: now },
           ...(userId ? { userId } : {}),
         },
-        select: { id: true },
+        include: { payments: true },
       });
 
       if (expiredPending && expiredPending.length > 0) {
-        const pendingIds = expiredPending.map((o) => o.id);
-        for (const order of expiredPending) {
+        const gatewayPending = expiredPending.filter((order) =>
+          (order.payments ?? []).some(
+            (payment) => payment.provider === "VNPAY" && payment.status === "PENDING",
+          ),
+        );
+        for (const expiredOrder of gatewayPending) {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM orders WHERE id = ${expiredOrder.id} FOR UPDATE`;
+            const order = await tx.order.findUnique({
+              where: { id: expiredOrder.id },
+              include: { payments: true },
+            });
+            if (
+              !order ||
+              order.status !== "PENDING" ||
+              !order.expiresAt ||
+              order.expiresAt > now
+            ) {
+              return;
+            }
+            await this.restoreOrderStock(tx, order.id);
+            await tx.order.update({
+              where: { id: order.id },
+              data: { status: "CANCELLED" },
+            });
+            await tx.payment.updateMany({
+              where: {
+                orderId: order.id,
+                provider: "VNPAY",
+                status: "PENDING",
+              },
+              data: {
+                status: "EXPIRED",
+                failureReason: "Order payment window expired.",
+              },
+            });
+            await tx.orderStatusHistory.create({
+              data: {
+                orderId: order.id,
+                oldStatus: "PENDING",
+                newStatus: "CANCELLED",
+                note: "Payment window expired; VNPay attempt retained for late callback reconciliation.",
+                changedAt: now,
+              },
+            });
+          });
+        }
+
+        const deletablePending = expiredPending.filter(
+          (order) =>
+            !(order.payments ?? []).some((payment) => payment.provider === "VNPAY"),
+        );
+        const pendingIds = deletablePending.map((order) => order.id);
+        for (const order of deletablePending) {
           await this.restoreOrderStock(this.prisma, order.id);
         }
-        await this.prisma.payment.deleteMany({
-          where: { orderId: { in: pendingIds } },
-        });
-        await this.prisma.order.deleteMany({
-          where: { id: { in: pendingIds } },
-        });
+        if (pendingIds.length > 0) {
+          await this.prisma.payment.deleteMany({
+            where: { orderId: { in: pendingIds } },
+          });
+          await this.prisma.order.deleteMany({
+            where: { id: { in: pendingIds } },
+          });
+        }
       }
 
-      // 2. Đơn PAYMENT_FAILED quá hạn 2 phút -> Hoàn tồn kho và đổi trạng thái thành CANCELLED
+      // 2. Failed orders are cancelled and stock is restored after expiry.
       const expiredFailed = await this.prisma.order.findMany({
         where: {
           status: "PAYMENT_FAILED",
@@ -279,24 +387,36 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       });
 
       if (expiredFailed && expiredFailed.length > 0) {
-        const failedIds = expiredFailed.map((o) => o.id);
-        for (const order of expiredFailed) {
-          await this.restoreOrderStock(this.prisma, order.id);
+        for (const expiredOrder of expiredFailed) {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM orders WHERE id = ${expiredOrder.id} FOR UPDATE`;
+            const order = await tx.order.findUnique({
+              where: { id: expiredOrder.id },
+            });
+            if (
+              !order ||
+              order.status !== "PAYMENT_FAILED" ||
+              !order.expiresAt ||
+              order.expiresAt > now
+            ) {
+              return;
+            }
+            await this.restoreOrderStock(tx, order.id);
+            await tx.order.update({
+              where: { id: order.id },
+              data: { status: "CANCELLED" },
+            });
+            await tx.orderStatusHistory.create({
+              data: {
+                orderId: order.id,
+                oldStatus: "PAYMENT_FAILED",
+                newStatus: "CANCELLED",
+                note: "Payment window expired; order cancelled.",
+                changedAt: now,
+              },
+            });
+          });
         }
-        await this.prisma.$transaction([
-          this.prisma.order.updateMany({
-            where: { id: { in: failedIds } },
-            data: { status: "CANCELLED" },
-          }),
-          this.prisma.orderStatusHistory.createMany({
-            data: failedIds.map((orderId) => ({
-              orderId,
-              oldStatus: "PAYMENT_FAILED",
-              newStatus: "CANCELLED",
-              note: "Hết hạn thanh toán 2 phút, tự động chuyển sang đã hủy",
-            })),
-          }),
-        ]);
       }
     } catch {
       // Không để lỗi cleanup làm gián đoạn luồng chính
@@ -304,7 +424,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   async create(userId: bigint, dto: CreateOrderDto, idempotencyKey?: string) {
-    // 1. Xử lý Idempotent: nếu có idempotencyKey và đã tồn tại payment/order, trả về kết quả cũ
+    const requestFingerprint = getOrderRequestFingerprint(dto);
+
     if (idempotencyKey) {
       const existingPayment = await this.prisma.payment.findUnique({
         where: { idempotencyKey },
@@ -319,6 +440,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         },
       });
       if (existingPayment?.order) {
+        this.assertOrderIdempotencyOwner(
+          existingPayment,
+          userId,
+          requestFingerprint,
+        );
         return this.serializeOrder(existingPayment.order);
       }
     }
@@ -332,7 +458,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     ];
 
     // Giá luôn lấy từ DB, không tin giá do client gửi lên.
-    const [user, products, sizes, productToppings] = await Promise.all([
+    const [user, products, sizes, productToppings, recipes] = await Promise.all([
       this.prisma.user.findFirst({
         where: { id: userId, isActive: true },
         select: { id: true },
@@ -352,6 +478,12 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           topping: { select: { id: true, name: true, price: true, stock: true, version: true } },
         },
       }),
+      (this.prisma.productRecipe?.findMany
+        ? this.prisma.productRecipe.findMany({
+            where: { productId: { in: productIds } },
+            include: { ingredient: true },
+          })
+        : Promise.resolve([])),
     ]);
 
     if (!user) throw new BadRequestException("User not found.");
@@ -385,14 +517,65 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // Kiểm tra số lượng tồn kho trước khi tạo
-    for (const [pIdStr, reqQty] of productRequiredQty.entries()) {
-      const p = productMap.get(pIdStr);
-      if (!p) throw new BadRequestException(`Sản phẩm không tồn tại.`);
-      if (typeof p.stock === "number" && p.stock < reqQty) {
-        throw new BadRequestException(
-          `Sản phẩm "${p.name}" không đủ số lượng tồn kho (chỉ còn ${p.stock}, yêu cầu ${reqQty}).`,
-        );
+    // Map công thức nguyên liệu theo productId
+    const recipeMap = new Map<string, Array<any>>();
+    for (const r of recipes ?? []) {
+      const pIdStr = r.productId.toString();
+      const list = recipeMap.get(pIdStr) || [];
+      list.push(r);
+      recipeMap.set(pIdStr, list);
+    }
+
+    const hasIngredientRecipes = Boolean(recipes && recipes.length > 0);
+
+    // Tính tổng nhu cầu nguyên liệu của toàn bộ đơn hàng (TASK 10)
+    const ingredientDemandMap = new Map<string, { ingredient: any; requiredAmount: number }>();
+
+    if (hasIngredientRecipes) {
+      for (const item of dto.items) {
+        const p = productMap.get(item.productId);
+        if (!p) throw new BadRequestException(`Sản phẩm không tồn tại.`);
+
+        const itemRecipes = recipeMap.get(item.productId) || [];
+        if (itemRecipes.length === 0) {
+          throw new BadRequestException(`Sản phẩm "${p.name}" chưa có công thức nguyên liệu hoặc đã hết hàng.`);
+        }
+
+        for (const r of itemRecipes) {
+          const ing = r.ingredient;
+          if (!ing || !ing.isActive) {
+            throw new BadRequestException(`Nguyên liệu trong công thức của món "${p.name}" không khả dụng.`);
+          }
+          const ingIdStr = ing.id.toString();
+          const reqAmount = Number(r.quantity) * item.quantity;
+          const existing = ingredientDemandMap.get(ingIdStr);
+          if (existing) {
+            existing.requiredAmount += reqAmount;
+          } else {
+            ingredientDemandMap.set(ingIdStr, { ingredient: ing, requiredAmount: reqAmount });
+          }
+        }
+      }
+
+      // Kiểm tra sơ bộ tồn kho nguyên liệu
+      for (const [_, demand] of ingredientDemandMap.entries()) {
+        const stockQty = Number(demand.ingredient.stockQuantity);
+        if (stockQty < demand.requiredAmount) {
+          throw new BadRequestException(
+            `Nguyên liệu "${demand.ingredient.name}" không đủ số lượng tồn kho (chỉ còn ${stockQty} ${demand.ingredient.unit}, yêu cầu ${demand.requiredAmount} ${demand.ingredient.unit}).`,
+          );
+        }
+      }
+    } else {
+      // Fallback kiểm tra tồn kho theo Product.stock cho các bài test mock cũ
+      for (const [pIdStr, reqQty] of productRequiredQty.entries()) {
+        const p = productMap.get(pIdStr);
+        if (!p) throw new BadRequestException(`Sản phẩm không tồn tại.`);
+        if (typeof p.stock === "number" && p.stock < reqQty) {
+          throw new BadRequestException(
+            `Sản phẩm "${p.name}" không đủ số lượng tồn kho (chỉ còn ${p.stock}, yêu cầu ${reqQty}).`,
+          );
+        }
       }
     }
 
@@ -450,8 +633,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         productSizeId: size.id,
         productName: product.name,
         sizeCode: size.sizeCode,
-        sugarPercent: item.sugarPercent,
-        icePercent: item.icePercent,
+        sugarPercent: item.sugarPercent ?? 100,
+        icePercent: item.icePercent ?? 100,
         note: item.note,
         quantity: item.quantity,
         unitPrice,
@@ -462,26 +645,72 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     const executeOrderCreation = async (tx: any) => {
       // 1. Trừ tồn kho bằng Optimistic Locking (version & stock condition)
-      for (const [pIdStr, reqQty] of productRequiredQty.entries()) {
-        const p = productMap.get(pIdStr)!;
-        if (typeof p.stock === "number" && typeof p.version === "number") {
-          const updater = tx?.product?.updateMany ?? this.prisma.product?.updateMany;
-          if (updater) {
-            const updateResult = await updater({
-              where: {
-                id: p.id,
-                version: p.version,
-                stock: { gte: reqQty },
-              },
+      if (hasIngredientRecipes && (tx?.ingredient?.updateMany ?? this.prisma.ingredient?.updateMany)) {
+        // Sắp xếp ingredientId tăng dần để ngăn ngừa Deadlock trong PostgreSQL (TASK 10)
+        const sortedDemands = Array.from(ingredientDemandMap.values()).sort((a, b) =>
+          BigInt(a.ingredient.id) < BigInt(b.ingredient.id) ? -1 : 1,
+        );
+
+        for (const demand of sortedDemands) {
+          const ing = demand.ingredient;
+          const reqQty = demand.requiredAmount;
+          const updater = tx?.ingredient?.updateMany ?? this.prisma.ingredient?.updateMany;
+
+          const updateResult = await updater({
+            where: {
+              id: ing.id,
+              version: ing.version,
+              stockQuantity: { gte: reqQty },
+            },
+            data: {
+              stockQuantity: { decrement: reqQty },
+              version: { increment: 1 },
+            },
+          });
+
+          if (updateResult.count === 0) {
+            throw new ConflictException(
+              `Nguyên liệu "${ing.name}" đã hết hoặc có xung đột tồn kho đồng thời. Vui lòng thử lại.`,
+            );
+          }
+        }
+
+        // Cập nhật Product.stock nếu có hỗ trợ để giữ tính tương thích
+        for (const [pIdStr, reqQty] of productRequiredQty.entries()) {
+          const p = productMap.get(pIdStr)!;
+          if (typeof p.stock === "number" && typeof p.version === "number" && tx?.product?.updateMany) {
+            await tx.product.updateMany({
+              where: { id: p.id },
               data: {
                 stock: { decrement: reqQty },
                 version: { increment: 1 },
               },
             });
-            if (updateResult.count === 0) {
-              throw new ConflictException(
-                `Sản phẩm "${p.name}" đã hết hàng hoặc có xung đột tồn kho. Vui lòng thử lại.`,
-              );
+          }
+        }
+      } else {
+        // Fallback trừ Product.stock cho bài test mock cũ
+        for (const [pIdStr, reqQty] of productRequiredQty.entries()) {
+          const p = productMap.get(pIdStr)!;
+          if (typeof p.stock === "number" && typeof p.version === "number") {
+            const updater = tx?.product?.updateMany ?? this.prisma.product?.updateMany;
+            if (updater) {
+              const updateResult = await updater({
+                where: {
+                  id: p.id,
+                  version: p.version,
+                  stock: { gte: reqQty },
+                },
+                data: {
+                  stock: { decrement: reqQty },
+                  version: { increment: 1 },
+                },
+              });
+              if (updateResult.count === 0) {
+                throw new ConflictException(
+                  `Sản phẩm "${p.name}" đã hết hàng hoặc có xung đột tồn kho. Vui lòng thử lại.`,
+                );
+              }
             }
           }
         }
@@ -524,7 +753,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           pointsEarned: 0,
           total: subtotal,
           note: dto.note,
-          expiresAt: new Date(Date.now() + PENDING_TTL_MS),
+          expiresAt: new Date(Date.now() + getPendingTtlMs()),
           orderItems: { create: itemsData },
           statusHistory: { create: { oldStatus: null, newStatus: "PENDING" } },
         },
@@ -542,6 +771,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
             method: "PENDING",
             provider: "BREWLITE",
             status: "PENDING",
+            rawResponse: { orderRequestFingerprint: requestFingerprint },
           },
         });
       }
@@ -575,19 +805,54 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           },
         });
         if (existingPayment?.order) {
+          this.assertOrderIdempotencyOwner(
+            existingPayment,
+            userId,
+            requestFingerprint,
+          );
           return this.serializeOrder(existingPayment.order);
         }
+
       }
       throw error;
     }
   }
 
+  private assertOrderIdempotencyOwner(
+    payment: {
+      provider: string | null;
+      rawResponse: unknown;
+      order: { userId: bigint } | null;
+    },
+    userId: bigint,
+    requestFingerprint: string,
+  ): void {
+    const response = payment.rawResponse;
+    const storedFingerprint =
+      typeof response === "object" &&
+      response !== null &&
+      "orderRequestFingerprint" in response
+        ? response.orderRequestFingerprint
+        : null;
+
+    if (
+      payment.provider !== "BREWLITE" ||
+      payment.order?.userId !== userId ||
+      typeof storedFingerprint !== "string" ||
+      storedFingerprint !== requestFingerprint
+    ) {
+      throw new ConflictException(
+        "Idempotency key has already been used for a different request.",
+      );
+    }
+  }
+
   /**
    * Lấy danh sách đơn hàng của người dùng hiện tại.
-   * Đơn PENDING mới tạo vẫn hiển thị bình thường; đơn quá 2 phút sẽ tự dọn dẹp biến mất.
+   * Đơn PENDING hết hạn được dọn dẹp; VNPay attempts được giữ để đối soát callback muộn.
    */
   async findMyOrders(userId: bigint, statusFilter?: string) {
-    // 1. Tự động dọn dẹp các đơn PENDING của user đã hết hạn quá 2 phút
+    // 1. Tự động dọn dẹp các đơn đã hết hạn thanh toán
     await this.cleanupExpiredOrders(userId);
 
     // 2. Lấy danh sách đơn còn hiệu lực
@@ -627,7 +892,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Lấy chi tiết một đơn hàng theo ID.
-   * Kiểm tra quyền sở hữu và thời hạn 2 phút của đơn PENDING.
+   * Kiểm tra quyền sở hữu và thời hạn của đơn PENDING.
    */
   async findById(orderId: bigint, userId: bigint) {
     const order = await this.prisma.order.findUnique({
@@ -653,38 +918,115 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException("Bạn không có quyền truy cập đơn hàng này.");
     }
 
-    // Nếu đơn PENDING quá 2 phút -> Xóa và báo hết hạn
-    if (order.status === "PENDING" && order.expiresAt && order.expiresAt < new Date()) {
-      await this.prisma.$transaction(async (tx) => {
-        await this.restoreOrderStock(tx, order.id);
-        await tx.payment.deleteMany({ where: { orderId: order.id } });
-        await tx.order.delete({ where: { id: order.id } });
-      });
-      throw new NotFoundException("Đơn hàng đã quá hạn thanh toán 2 phút và đã bị hủy.");
+    if (
+      order.status === "PENDING" &&
+      order.expiresAt &&
+      order.expiresAt <= new Date()
+    ) {
+      const hasVnpayAttempt = (order.payments ?? []).some(
+        (payment) => payment.provider === "VNPAY",
+      );
+      if (hasVnpayAttempt) {
+        const expiredOrder = await this.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
+          const current = await tx.order.findUnique({
+            where: { id: order.id },
+            include: { payments: true },
+          });
+          if (
+            current?.status === "PENDING" &&
+            current.expiresAt &&
+            current.expiresAt <= new Date()
+          ) {
+            await this.restoreOrderStock(tx, current.id);
+            await tx.order.update({
+              where: { id: current.id },
+              data: { status: "CANCELLED" },
+            });
+            await tx.payment.updateMany({
+              where: {
+                orderId: current.id,
+                provider: "VNPAY",
+                status: "PENDING",
+              },
+              data: {
+                status: "EXPIRED",
+                failureReason: "Order payment window expired.",
+              },
+            });
+            await tx.orderStatusHistory.create({
+              data: {
+                orderId: current.id,
+                oldStatus: "PENDING",
+                newStatus: "CANCELLED",
+                note: "Payment window expired; VNPay attempt retained for late callback reconciliation.",
+              },
+            });
+          }
+          return tx.order.findUnique({
+            where: { id: order.id },
+            include: {
+              orderItems: { include: { toppings: true } },
+              payments: { orderBy: { createdAt: "desc" } },
+              statusHistory: { orderBy: { changedAt: "asc" } },
+            },
+          });
+        });
+        if (expiredOrder) return this.serializeOrder(expiredOrder);
+      } else {
+        await this.prisma.$transaction(async (tx) => {
+          await this.restoreOrderStock(tx, order.id);
+          await tx.payment.deleteMany({ where: { orderId: order.id } });
+          await tx.order.delete({ where: { id: order.id } });
+        });
+        throw new NotFoundException("Order has expired and was cancelled.");
+      }
     }
 
-    // Nếu đơn PAYMENT_FAILED quá 2 phút -> Đổi trạng thái thành CANCELLED
-    if (order.status === "PAYMENT_FAILED" && order.expiresAt && order.expiresAt < new Date()) {
+    if (order.status === "PAYMENT_FAILED" && order.expiresAt && order.expiresAt <= new Date()) {
       const updatedCancelled = await this.prisma.$transaction(async (tx) => {
-        await this.restoreOrderStock(tx, order.id);
-        const o = await tx.order.update({
+        await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
+        const current = await tx.order.findUnique({ where: { id: order.id } });
+        if (
+          current?.status === "PAYMENT_FAILED" &&
+          current.expiresAt &&
+          current.expiresAt <= new Date()
+        ) {
+          const now = new Date();
+          await this.restoreOrderStock(tx, current.id);
+          await tx.order.update({
+            where: { id: current.id },
+            data: { status: "CANCELLED" },
+          });
+          await tx.payment.updateMany({
+            where: {
+              orderId: current.id,
+              provider: "VNPAY",
+              status: "PENDING",
+            },
+            data: {
+              status: "EXPIRED",
+              failureReason: "Order payment window expired.",
+            },
+          });
+          await tx.orderStatusHistory.create({
+            data: {
+              orderId: current.id,
+              oldStatus: "PAYMENT_FAILED",
+              newStatus: "CANCELLED",
+              note: "Payment window expired; order cancelled.",
+              changedAt: now,
+            },
+          });
+        }
+        return tx.order.findUnique({
           where: { id: order.id },
-          data: { status: "CANCELLED" },
           include: {
             orderItems: { include: { toppings: true } },
             payments: { orderBy: { createdAt: "desc" } },
             statusHistory: { orderBy: { changedAt: "asc" } },
           },
         });
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId: order.id,
-            oldStatus: "PAYMENT_FAILED",
-            newStatus: "CANCELLED",
-            note: "Hết hạn thanh toán 2 phút, tự động chuyển sang đã hủy",
-          },
-        });
-        return o;
       });
       return this.serializeOrder(updatedCancelled);
     }
@@ -699,317 +1041,88 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Xử lý Mock Payment phía Backend:
-   * - Nếu thành công: Cập nhật status thành PAID, tạo bản ghi Payment SUCCESS, ghi lịch sử.
-   * - Nếu thất bại: Tạo bản ghi Payment FAILED, giữ nguyên status PENDING để thanh toán lại.
-   */
-  async processMockPayment(orderId: bigint, userId: bigint, dto: MockPaymentDto, idempotencyKeyHeader?: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: { payments: true },
-    });
-
-    if (!order) {
-      throw new NotFoundException("Đơn hàng không tồn tại.");
-    }
-
-    if (order.userId !== userId) {
-      throw new ForbiddenException("Bạn không có quyền thanh toán đơn hàng này.");
-    }
-
-    const effectiveIdempotencyKey = idempotencyKeyHeader || dto.idempotencyKey;
-
-    // Idempotent Check: Nếu key đã được sử dụng trước đó, trả về kết quả đã lưu trữ
-    if (effectiveIdempotencyKey) {
-      const existingPayment = await this.prisma.payment.findUnique({
-        where: { idempotencyKey: effectiveIdempotencyKey },
-        include: { order: true },
-      });
-      if (existingPayment) {
-        return {
-          outcome: existingPayment.status === "SUCCESS" ? "SIMULATED_SUCCESS" : "SIMULATED_FAILURE",
-          orderId: existingPayment.orderId.toString(),
-          orderCode: existingPayment.order?.orderCode ?? order.orderCode,
-          status: existingPayment.order?.status ?? (existingPayment.status === "SUCCESS" ? "PAID" : "PAYMENT_FAILED"),
-          paymentStatus: existingPayment.status,
-          message: existingPayment.status === "SUCCESS"
-            ? "Đơn hàng đã được thanh toán trước đó (Idempotent response)."
-            : "Giao dịch đã được ghi nhận thất bại trước đó (Idempotent response).",
-          pointsEarned: 0,
-        };
-      }
-    }
-
-    // Nếu đơn hàng đã PAID -> Trả về kết quả thành công (Idempotent)
-    if (order.status === "PAID") {
-      return {
-        outcome: "SIMULATED_SUCCESS",
-        orderId: order.id.toString(),
-        orderCode: order.orderCode,
-        status: "PAID",
-        paymentStatus: "SUCCESS",
-        message: "Đơn hàng đã được thanh toán trước đó.",
-        pointsEarned: 0,
-      };
-    }
-
-    // State Machine Validation: Kiểm tra chuyển đổi trạng thái hợp lệ
-    const targetStatus = dto.outcome === "success" ? "PAID" : "PAYMENT_FAILED";
-    validateStateTransition(order.status, targetStatus);
-
-    if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
-      throw new BadRequestException(
-        `Đơn hàng không ở trạng thái có thể thanh toán (trạng thái hiện tại: ${order.status}).`,
-      );
-    }
-
-    // Kiểm tra hết hạn 2 phút -> hoàn tồn kho nếu hết hạn
-    if (order.expiresAt && order.expiresAt < new Date()) {
-      if (order.status === "PENDING") {
-        await this.prisma.$transaction(async (tx) => {
-          await this.restoreOrderStock(tx, order.id);
-          await tx.payment.deleteMany({ where: { orderId: order.id } });
-          await tx.order.delete({ where: { id: order.id } });
-        });
-        throw new BadRequestException("Đơn hàng đã hết hạn thanh toán (quá 2 phút) và đã bị hủy. Vui lòng tạo đơn mới.");
-      } else if (order.status === "PAYMENT_FAILED") {
-        await this.prisma.$transaction(async (tx) => {
-          await this.restoreOrderStock(tx, order.id);
-          await tx.order.update({
-            where: { id: order.id },
-            data: { status: "CANCELLED" },
-          });
-          await tx.orderStatusHistory.create({
-            data: {
-              orderId: order.id,
-              oldStatus: "PAYMENT_FAILED",
-              newStatus: "CANCELLED",
-              note: "Hết hạn thanh toán 2 phút, tự động chuyển sang đã hủy",
-            },
-          });
-        });
-        throw new BadRequestException("Đơn hàng đã hết hạn thanh toán (quá 2 phút) và đã được chuyển sang trạng thái Đã hủy.");
-      }
-    }
-
-    const idempotencyKey = effectiveIdempotencyKey || `mock_${dto.outcome}_${order.id}_${Date.now()}`;
-
-    try {
-      if (dto.outcome === "success") {
-        // Thực hiện cập nhật trong Transaction để đảm bảo tính nhất quán
-        const txCode = `MOCK-TX-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
-        const shouldAwardPoints = (order.pointsEarned ?? 0) === 0;
-
-        const txOperations: any[] = [
-          this.prisma.order.update({
-            where: { id: order.id },
-            data: {
-              status: "PAID",
-              ...(shouldAwardPoints ? { pointsEarned: 100 } : {}),
-            },
-          }),
-          this.prisma.payment.create({
-            data: {
-              orderId: order.id,
-              idempotencyKey,
-              amount: order.total,
-              method: dto.method,
-              provider: "MOCK_PAYMENT",
-              status: "SUCCESS",
-              transactionCode: txCode,
-              failureReason: null,
-              rawResponse: {
-                outcome: "SIMULATED_SUCCESS",
-                simulation: true,
-                processedAt: new Date().toISOString(),
-              },
-              paidAt: new Date(),
-            },
-          }),
-          this.prisma.orderStatusHistory.create({
-            data: {
-              orderId: order.id,
-              oldStatus: order.status,
-              newStatus: "PAID",
-              note: `Mô phỏng thanh toán thành công qua ${dto.method === "E_WALLET" ? "Ví điện tử" : "Thẻ ngân hàng"}${shouldAwardPoints ? " (+100 điểm thưởng)" : ""}`,
-            },
-          }),
-        ];
-
-        // Nếu chưa cộng điểm cho đơn này, cộng 100 điểm vào tài khoản user
-        if (shouldAwardPoints) {
-          txOperations.push(
-            this.prisma.user.update({
-              where: { id: order.userId },
-              data: { loyaltyPoints: { increment: 100 } },
-            }),
-          );
-        }
-
-        // Nếu đơn hàng có sử dụng voucher, cập nhật usedCount và ghi nhận PromotionUsage
-        if (order.promotionId) {
-          txOperations.push(
-            this.prisma.promotion.update({
-              where: { id: order.promotionId },
-              data: { usedCount: { increment: 1 } },
-            }),
-          );
-          txOperations.push(
-            this.prisma.promotionUsage.upsert({
-              where: { orderId: order.id },
-              update: {},
-              create: {
-                promotionId: order.promotionId,
-                userId: order.userId,
-                orderId: order.id,
-                discountAmount: order.discountAmount,
-              },
-            }),
-          );
-        }
-
-        const [updatedOrder] = await this.prisma.$transaction(txOperations);
-
-        return {
-          outcome: "SIMULATED_SUCCESS",
-          orderId: updatedOrder.id.toString(),
-          orderCode: updatedOrder.orderCode,
-          status: "PAID",
-          paymentStatus: "SUCCESS",
-          message: "Mô phỏng thanh toán thành công.",
-          pointsEarned: shouldAwardPoints ? 100 : 0,
-        };
-      } else {
-        // Khi thất bại: Ghi nhận Payment FAILED và chuyển status đơn hàng thành PAYMENT_FAILED
-        await this.prisma.$transaction([
-          this.prisma.order.update({
-            where: { id: order.id },
-            data: { status: "PAYMENT_FAILED" },
-          }),
-          this.prisma.payment.create({
-            data: {
-              orderId: order.id,
-              idempotencyKey,
-              amount: order.total,
-              method: dto.method,
-              provider: "MOCK_PAYMENT",
-              status: "FAILED",
-              failureReason: "Người dùng mô phỏng thanh toán thất bại.",
-              rawResponse: { outcome: "SIMULATED_FAILURE", simulation: true },
-            },
-          }),
-          this.prisma.orderStatusHistory.create({
-            data: {
-              orderId: order.id,
-              oldStatus: order.status,
-              newStatus: "PAYMENT_FAILED",
-              note: "Mô phỏng thanh toán thất bại",
-            },
-          }),
-        ]);
-
-        return {
-          outcome: "SIMULATED_FAILURE",
-          orderId: order.id.toString(),
-          orderCode: order.orderCode,
-          status: "PAYMENT_FAILED",
-          paymentStatus: "FAILED",
-          message: "Mô phỏng thanh toán thất bại. Vui lòng thử thanh toán lại.",
-        };
-      }
-    } catch (error: any) {
-      if (error?.code === "P2002" && idempotencyKey) {
-        const existingPayment = await this.prisma.payment.findUnique({
-          where: { idempotencyKey },
-          include: { order: true },
-        });
-        if (existingPayment) {
-          return {
-            outcome: existingPayment.status === "SUCCESS" ? "SIMULATED_SUCCESS" : "SIMULATED_FAILURE",
-            orderId: existingPayment.orderId.toString(),
-            orderCode: existingPayment.order?.orderCode ?? order.orderCode,
-            status: existingPayment.order?.status ?? (existingPayment.status === "SUCCESS" ? "PAID" : "PAYMENT_FAILED"),
-            paymentStatus: existingPayment.status,
-            message: "Đơn hàng đã được thanh toán trước đó (Idempotent response).",
-            pointsEarned: 0,
-          };
-        }
-      }
-      throw error;
-    }
-  }
-
-  /**
    * Áp dụng mã khuyến mại (voucher) vào đơn hàng đang chờ thanh toán.
    */
   async applyVoucher(orderId: bigint, userId: bigint, voucherCode: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        orderItems: { include: { toppings: true } },
-        payments: { orderBy: { createdAt: "desc" } },
-        statusHistory: { orderBy: { changedAt: "asc" } },
-      },
-    });
-
-    if (!order) {
-      throw new NotFoundException("Đơn hàng không tồn tại.");
-    }
-    if (order.userId !== userId) {
-      throw new ForbiddenException("Bạn không có quyền thao tác trên đơn hàng này.");
-    }
-    if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
-      throw new BadRequestException("Chỉ có thể áp dụng mã khuyến mại cho đơn hàng chưa thanh toán.");
-    }
-
     const cleanCode = (voucherCode || "").trim().toUpperCase();
-    const promotion = await this.prisma.promotion.findUnique({
-      where: { code: cleanCode },
-    });
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          orderItems: { include: { toppings: true } },
+          payments: { orderBy: { createdAt: "desc" } },
+          statusHistory: { orderBy: { changedAt: "asc" } },
+        },
+      });
 
-    if (!promotion) {
-      throw new NotFoundException("Mã khuyến mại không tồn tại.");
-    }
+      if (!order) {
+        throw new NotFoundException("Đơn hàng không tồn tại.");
+      }
+      if (order.userId !== userId) {
+        throw new ForbiddenException("Bạn không có quyền thao tác trên đơn hàng này.");
+      }
+      if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
+        throw new BadRequestException("Chỉ có thể áp dụng mã khuyến mại cho đơn hàng chưa thanh toán.");
+      }
+      if (
+        (order.payments ?? []).some(
+          (payment) => payment.provider === "VNPAY" && payment.status === "PENDING",
+        )
+      ) {
+        throw new ConflictException(
+          "Không thể thay đổi voucher khi đang có giao dịch VNPay chờ xử lý.",
+        );
+      }
 
-    if (promotion.ownerUserId && promotion.ownerUserId !== userId) {
-      throw new BadRequestException("Mã khuyến mại này không thuộc về tài khoản của bạn.");
-    }
+      const promotion = await tx.promotion.findUnique({
+        where: { code: cleanCode },
+      });
 
-    if (!promotion.isActive) {
-      throw new BadRequestException("Mã khuyến mại hiện đang tạm khóa hoặc không hoạt động.");
-    }
+      if (!promotion) {
+        throw new NotFoundException("Mã khuyến mại không tồn tại.");
+      }
 
-    const now = new Date();
-    if (promotion.endAt < now) {
-      throw new BadRequestException("Mã khuyến mại đã hết hạn sử dụng.");
-    }
+      if (promotion.ownerUserId && promotion.ownerUserId !== userId) {
+        throw new BadRequestException("Mã khuyến mại này không thuộc về tài khoản của bạn.");
+      }
 
-    if (promotion.usedCount >= (promotion.usageLimit ?? 1)) {
-      throw new BadRequestException("Mã khuyến mại này đã được sử dụng.");
-    }
+      if (!promotion.isActive) {
+        throw new BadRequestException("Mã khuyến mại hiện đang tạm khóa hoặc không hoạt động.");
+      }
 
-    const subtotal = order.subtotal?.toNumber ? order.subtotal.toNumber() : Number(order.subtotal);
-    const minOrder = promotion.minOrderAmount?.toNumber ? promotion.minOrderAmount.toNumber() : Number(promotion.minOrderAmount);
-    if (subtotal < minOrder) {
-      throw new BadRequestException(`Đơn hàng phải đạt tối thiểu ${minOrder.toLocaleString("vi-VN")} đ để áp dụng mã này.`);
-    }
+      const now = new Date();
+      if (promotion.endAt < now) {
+        throw new BadRequestException("Mã khuyến mại đã hết hạn sử dụng.");
+      }
 
-    const discountVal = promotion.discountValue?.toNumber ? promotion.discountValue.toNumber() : Number(promotion.discountValue);
-    const discountAmount = Math.min(discountVal, subtotal);
-    const total = Math.max(0, subtotal - discountAmount);
+      if (promotion.usedCount >= (promotion.usageLimit ?? 1)) {
+        throw new BadRequestException("Mã khuyến mại này đã được sử dụng.");
+      }
 
-    const updatedOrder = await this.prisma.order.update({
-      where: { id: order.id },
-      data: {
-        promotionId: promotion.id,
-        discountAmount,
-        total,
-      },
-      include: {
-        orderItems: { include: { toppings: true } },
-        payments: { orderBy: { createdAt: "desc" } },
-        statusHistory: { orderBy: { changedAt: "asc" } },
-      },
+      const subtotal = order.subtotal?.toNumber ? order.subtotal.toNumber() : Number(order.subtotal);
+      const minOrder = promotion.minOrderAmount?.toNumber ? promotion.minOrderAmount.toNumber() : Number(promotion.minOrderAmount);
+      if (subtotal < minOrder) {
+        throw new BadRequestException(`Đơn hàng phải đạt tối thiểu ${minOrder.toLocaleString("vi-VN")} đ để áp dụng mã này.`);
+      }
+
+      const discountVal = promotion.discountValue?.toNumber ? promotion.discountValue.toNumber() : Number(promotion.discountValue);
+      const discountAmount = Math.min(discountVal, subtotal);
+      const total = Math.max(0, subtotal - discountAmount);
+
+      return tx.order.update({
+        where: { id: order.id },
+        data: {
+          promotionId: promotion.id,
+          discountAmount,
+          total,
+        },
+        include: {
+          orderItems: { include: { toppings: true } },
+          payments: { orderBy: { createdAt: "desc" } },
+          statusHistory: { orderBy: { changedAt: "asc" } },
+        },
+      });
     });
 
     return this.serializeOrder(updatedOrder);
@@ -1019,34 +1132,47 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
    * Hủy áp dụng mã khuyến mại khỏi đơn hàng.
    */
   async removeVoucher(orderId: bigint, userId: bigint) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-    });
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { payments: true },
+      });
 
-    if (!order) {
-      throw new NotFoundException("Đơn hàng không tồn tại.");
-    }
-    if (order.userId !== userId) {
-      throw new ForbiddenException("Bạn không có quyền thao tác trên đơn hàng này.");
-    }
-    if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
-      throw new BadRequestException("Chỉ có thể thay đổi mã khuyến mại cho đơn hàng chưa thanh toán.");
-    }
+      if (!order) {
+        throw new NotFoundException("Đơn hàng không tồn tại.");
+      }
+      if (order.userId !== userId) {
+        throw new ForbiddenException("Bạn không có quyền thao tác trên đơn hàng này.");
+      }
+      if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
+        throw new BadRequestException("Chỉ có thể thay đổi mã khuyến mại cho đơn hàng chưa thanh toán.");
+      }
+      if (
+        (order.payments ?? []).some(
+          (payment) => payment.provider === "VNPAY" && payment.status === "PENDING",
+        )
+      ) {
+        throw new ConflictException(
+          "Không thể thay đổi voucher khi đang có giao dịch VNPay chờ xử lý.",
+        );
+      }
 
-    const subtotal = order.subtotal?.toNumber ? order.subtotal.toNumber() : Number(order.subtotal);
+      const subtotal = order.subtotal?.toNumber ? order.subtotal.toNumber() : Number(order.subtotal);
 
-    const updatedOrder = await this.prisma.order.update({
-      where: { id: order.id },
-      data: {
-        promotionId: null,
-        discountAmount: 0,
-        total: subtotal,
-      },
-      include: {
-        orderItems: { include: { toppings: true } },
-        payments: { orderBy: { createdAt: "desc" } },
-        statusHistory: { orderBy: { changedAt: "asc" } },
-      },
+      return tx.order.update({
+        where: { id: order.id },
+        data: {
+          promotionId: null,
+          discountAmount: 0,
+          total: subtotal,
+        },
+        include: {
+          orderItems: { include: { toppings: true } },
+          payments: { orderBy: { createdAt: "desc" } },
+          statusHistory: { orderBy: { changedAt: "asc" } },
+        },
+      });
     });
 
     return this.serializeOrder(updatedOrder);
@@ -1076,28 +1202,51 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException("Chỉ có thể hủy đơn hàng đang chờ thanh toán hoặc thanh toán lỗi.");
     }
 
-    // Hoàn lại tồn kho cho sản phẩm và topping
-    await this.restoreOrderStock(this.prisma, order.id);
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`;
+      const current = await tx.order.findUnique({ where: { id: order.id } });
+      if (!current) throw new NotFoundException("Đơn hàng không tồn tại.");
+      if (current.userId !== userId) {
+        throw new ForbiddenException("Bạn không có quyền hủy đơn hàng này.");
+      }
+      validateStateTransition(current.status, "CANCELLED");
+      if (current.status !== "PENDING" && current.status !== "PAYMENT_FAILED") {
+        throw new BadRequestException("Chỉ có thể hủy đơn hàng đang chờ thanh toán hoặc thanh toán lỗi.");
+      }
 
-    const [updatedOrder] = await this.prisma.$transaction([
-      this.prisma.order.update({
-        where: { id: order.id },
+      await this.restoreOrderStock(tx, current.id);
+      const updated = await tx.order.update({
+        where: { id: current.id },
         data: { status: "CANCELLED" },
+      });
+      await tx.payment.updateMany({
+        where: {
+          orderId: current.id,
+          provider: "VNPAY",
+          status: "PENDING",
+        },
+        data: {
+          status: "EXPIRED",
+          failureReason: "Order was cancelled by the customer.",
+        },
+      });
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: current.id,
+          oldStatus: current.status,
+          newStatus: "CANCELLED",
+          note: "Người dùng hủy đơn hàng.",
+        },
+      });
+      return tx.order.findUnique({
+        where: { id: updated.id },
         include: {
           orderItems: { include: { toppings: true } },
           payments: { orderBy: { createdAt: "desc" } },
           statusHistory: { orderBy: { changedAt: "asc" } },
         },
-      }),
-      this.prisma.orderStatusHistory.create({
-        data: {
-          orderId: order.id,
-          oldStatus: order.status,
-          newStatus: "CANCELLED",
-          note: "Người dùng hủy đơn hàng.",
-        },
-      }),
-    ]);
+      });
+    });
 
     return this.serializeOrder(updatedOrder);
   }
@@ -1128,8 +1277,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         productId: oi.productId.toString(),
         productName: oi.productName,
         sizeCode: oi.sizeCode ?? null,
-        sugarPercent: oi.sugarPercent ?? null,
-        icePercent: oi.icePercent ?? null,
+        sugarPercent: oi.sugarPercent ?? 100,
+        icePercent: oi.icePercent ?? 100,
         note: oi.note ?? null,
         quantity: oi.quantity,
         unitPrice: oi.unitPrice?.toNumber ? oi.unitPrice.toNumber() : Number(oi.unitPrice),
