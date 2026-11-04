@@ -36,9 +36,13 @@ export function ProductCard({ product }: { product: ProductSummary }) {
       {/* Thông tin món */}
       <div className="lp-pcard__info">
         <h3 className="lp-pcard__title">
-          <Link href={`/products/${encodeURIComponent(product.id)}`}>
-            {product.name}
-          </Link>
+          {isOut ? (
+            <span className="cursor-not-allowed opacity-75">{product.name}</span>
+          ) : (
+            <Link href={`/products/${encodeURIComponent(product.id)}`}>
+              {product.name}
+            </Link>
+          )}
         </h3>
         
         <p className="lp-pcard__desc">
