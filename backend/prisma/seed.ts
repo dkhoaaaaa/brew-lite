@@ -183,6 +183,9 @@ const productData: ProductSeed[] = [
   { name: "Cookie matcha", category: "Bánh", description: "Bánh quy thơm vị matcha", price: "29000" },
   { name: "Macaron vanilla", category: "Bánh", description: "Bánh macaron nhân kem vanilla", price: "35000" },
   { name: "Macaron raspberry", category: "Bánh", description: "Bánh macaron nhân mâm xôi", price: "35000" },
+
+  // test
+  { name: "Test món", category: "Cà phê", description: "Món dùng để test hết hàng", price: "20000" },
 ];
 
 const toppingData = [
@@ -218,6 +221,7 @@ const ingredientData = [
   { name: "Bơ lạt", stockQuantity: "200.00" },
   { name: "Trứng gà", stockQuantity: "1000.00" },
   { name: "Chocolate", stockQuantity: "300.00" },
+  { name: "Nguyên liệu test", stockQuantity: "1.00" },
 ] as const;
 
 const promotionData = [
@@ -257,11 +261,23 @@ function assertNoDuplicateNames() {
   const promoCodes = promotionData.map((item) => item.code);
   if (new Set(productKeys).size !== productKeys.length) throw new Error("Danh sách seed có tên sản phẩm trùng trong cùng danh mục.");
   if (new Set(promoCodes).size !== promoCodes.length) throw new Error("Danh sách seed có mã khuyến mãi trùng.");
+  
   const expectedCategories = ["Cà phê", "Trà", "Bánh"];
-  if (productData.length !== 150 || promotionData.length !== 10 ||
-      expectedCategories.some((category) => productData.filter((p) => p.category === category).length !== 50) ||
-      productData.some((p) => !expectedCategories.includes(p.category))) {
-    throw new Error("Seed phải có đúng 50 món mỗi danh mục (150 sản phẩm) và 10 mã khuyến mãi.");
+  
+  // Cho phép tổng là 151 và danh mục Cà phê là 51 món (Trà và Bánh giữ nguyên 50 món)
+  const coffeeCount = productData.filter((p) => p.category === "Cà phê").length;
+  const teaCount = productData.filter((p) => p.category === "Trà").length;
+  const cakeCount = productData.filter((p) => p.category === "Bánh").length;
+
+  if (
+    productData.length !== 151 ||
+    promotionData.length !== 10 ||
+    coffeeCount !== 51 || 
+    teaCount !== 50 || 
+    cakeCount !== 50 ||
+    productData.some((p) => !expectedCategories.includes(p.category))
+  ) {
+    throw new Error("Số lượng sản phẩm trong các danh mục không khớp với thiết lập test.");
   }
 }
 
@@ -311,7 +327,9 @@ async function main() {
   for (const item of productData) {
     const recipeMap = new Map<string, string>();
 
-    if (item.category === "Cà phê") {
+    if (item.name === "Test món") {
+      recipeMap.set("Nguyên liệu test", "1.00");
+    } else if (item.category === "Cà phê") {
       recipeMap.set("Hạt cà phê", "1.00");
       recipeMap.set("Đường syrup", "1.00");
       if (
