@@ -197,40 +197,45 @@ function ProductDetailView({
             selectedToppingIds={selectedToppingIds}
             onChange={setSelectedToppingIds}
           />
-          <fieldset className="option-group">
-            <legend>Đường <span>Mặc định 100%</span></legend>
-            <div className="size-options">
-              {DRINK_PREFERENCE_PERCENTAGES.map((percentage) => (
-                <label className="size-option" key={percentage}>
-                  <input
-                    checked={sugarPercent === percentage}
-                    name="sugar-percent"
-                    onChange={() => setSugarPercent(percentage)}
-                    type="radio"
-                    value={percentage}
-                  />
-                  <span className="size-option__code">{percentage}%</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <fieldset className="option-group">
-            <legend>Đá <span>Mặc định 100%</span></legend>
-            <div className="size-options">
-              {DRINK_PREFERENCE_PERCENTAGES.map((percentage) => (
-                <label className="size-option" key={percentage}>
-                  <input
-                    checked={icePercent === percentage}
-                    name="ice-percent"
-                    onChange={() => setIcePercent(percentage)}
-                    type="radio"
-                    value={percentage}
-                  />
-                  <span className="size-option__code">{percentage}%</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          
+          {currentProduct.categoryName !== "Bánh" && (
+            <>
+              <fieldset className="option-group">
+                <legend>Đường <span>Mặc định 100%</span></legend>
+                <div className="size-options">
+                  {DRINK_PREFERENCE_PERCENTAGES.map((percentage) => (
+                    <label className="size-option" key={percentage}>
+                      <input
+                        checked={sugarPercent === percentage}
+                        name="sugar-percent"
+                        onChange={() => setSugarPercent(percentage)}
+                        type="radio"
+                        value={percentage}
+                      />
+                      <span className="size-option__code">{percentage}%</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="option-group">
+                <legend>Đá <span>Mặc định 100%</span></legend>
+                <div className="size-options">
+                  {DRINK_PREFERENCE_PERCENTAGES.map((percentage) => (
+                    <label className="size-option" key={percentage}>
+                      <input
+                        checked={icePercent === percentage}
+                        name="ice-percent"
+                        onChange={() => setIcePercent(percentage)}
+                        type="radio"
+                        value={percentage}
+                      />
+                      <span className="size-option__code">{percentage}%</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </>
+          )}
 
           <div className="purchase-row">
             <div>

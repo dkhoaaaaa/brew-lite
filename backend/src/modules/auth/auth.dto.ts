@@ -17,7 +17,6 @@ export class RegisterDto {
 
   @IsString({ message: "Mật khẩu phải là chuỗi ký tự" })
   @MinLength(6, { message: "Mật khẩu phải có ít nhất 6 chữ số" })
-  @Matches(/^(?:\D*\d){6}/, { message: "Mật khẩu phải có ít nhất 6 chữ số" })
   password: string;
 
   @IsString({ message: "Họ và tên phải là chuỗi ký tự" })
