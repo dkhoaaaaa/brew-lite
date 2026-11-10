@@ -215,9 +215,19 @@ function CheckoutContent() {
           <p className="eyebrow">Chưa có đơn được xác nhận</p>
           <h1>Chưa thể tiếp tục checkout.</h1>
           <p>{orderError ?? "Không tìm thấy phản hồi tạo đơn từ backend."}</p>
-          <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
-            <Link className="button button--dark" href="/cart">Quay lại giỏ hàng</Link>
-            <Link className="button" style={{ border: "1px solid #DED6CB", background: "white" }} href="/orders">Xem đơn hàng của tôi</Link>
+          <div className="flex flex-col sm:flex-row gap-3 mt-4">
+            <Link
+              className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 bg-[#163326] hover:bg-[#0e2118] text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-xs"
+              href="/cart"
+            >
+              Quay lại giỏ hàng
+            </Link>
+            <Link
+              className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 border border-[#DED6CB] bg-white hover:bg-[#FAF8F5] text-[#30251D] text-xs sm:text-sm font-bold rounded-xl transition shadow-xs"
+              href="/orders"
+            >
+              Xem đơn hàng của tôi
+            </Link>
           </div>
         </section>
       </main>
@@ -227,60 +237,74 @@ function CheckoutContent() {
   const isExpired = timeLeft !== null && timeLeft <= 0;
 
   return (
-    <main className="page-shell checkout-page">
-      <Link className="back-link" href="/cart">Quay lại giỏ hàng</Link>
-      <header className="checkout-heading">
-        <p className="eyebrow">BrewLite · checkout</p>
-        <h1>Thanh toán đơn hàng</h1>
-        <p>Bạn sẽ được chuyển đến VNPay Sandbox. Trạng thái đơn chỉ được cập nhật sau khi backend xác minh IPN.</p>
+    <main className="page-shell checkout-page max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+      <Link
+        className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#667068] hover:text-[#163326] mb-6 transition-colors"
+        href="/cart"
+      >
+        ← Quay lại giỏ hàng
+      </Link>
+      <header className="mb-6 sm:mb-8 pb-4 border-b border-[#d8d8cb]">
+        <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-1">
+          BrewLite · checkout
+        </p>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-heading text-[#163326]">
+          Thanh toán đơn hàng
+        </h1>
+        <p className="text-xs sm:text-sm text-[#667068] mt-1 leading-relaxed max-w-2xl">
+          Bạn sẽ được chuyển đến VNPay Sandbox. Trạng thái đơn chỉ được cập nhật sau khi backend xác minh IPN.
+        </p>
         
         {timeLeft !== null && (
           <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              marginTop: "12px",
-              padding: "6px 14px",
-              borderRadius: "6px",
-              backgroundColor: isExpired ? "#FDE8E8" : "#F5EFE6",
-              border: `1px solid ${isExpired ? "#F8B4B4" : "#DED6CB"}`,
-              fontSize: "13.5px",
-              fontWeight: 600,
-              color: isExpired ? "#9B1C1C" : "#5C4738",
-            }}
+            className={`inline-flex items-center gap-2 mt-3.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold border ${
+              isExpired
+                ? "bg-red-50 border-red-200 text-red-800"
+                : "bg-[#F5EFE6] border-[#DED6CB] text-[#5C4738]"
+            }`}
           >
             <span>Thời gian thanh toán còn lại:</span>
-            <strong style={{ fontFamily: "monospace", fontSize: "15px" }}>
+            <strong className="font-mono text-sm sm:text-base">
               {formatCountdown(timeLeft)}
             </strong>
           </div>
         )}
       </header>
 
-      <div className="checkout-layout">
-        <section className="checkout-options">
-          <div className="checkout-order-state">
-            <span>Mã đơn từ backend</span>
-            <strong>{createdOrder.orderCode}</strong>
-            <span>Trạng thái đơn từ backend</span>
-            <strong>{createdOrder.status}</strong>
-            <span>Tổng đơn từ backend</span>
-            <strong>{formatPrice(String(createdOrder.total))}</strong>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
+        <section className="bg-white border border-[#d8d8cb] rounded-2xl p-5 sm:p-6 shadow-sm space-y-6">
+          <div className="checkout-order-state grid grid-cols-1 sm:grid-cols-2 gap-3 pb-5 border-b border-[#EDE6DC]">
+            <div className="bg-[#FAF8F5] p-3 rounded-xl border border-[#EDE6DC]">
+              <span className="text-xs text-[#667068] block mb-0.5">Mã đơn từ backend</span>
+              <strong className="font-mono text-sm text-[#163326]">{createdOrder.orderCode}</strong>
+            </div>
+            <div className="bg-[#FAF8F5] p-3 rounded-xl border border-[#EDE6DC]">
+              <span className="text-xs text-[#667068] block mb-0.5">Trạng thái đơn</span>
+              <strong className="text-sm text-[#163326]">{createdOrder.status}</strong>
+            </div>
+            <div className="bg-[#FAF8F5] p-3 rounded-xl border border-[#EDE6DC] sm:col-span-2 flex items-center justify-between">
+              <span className="text-xs text-[#667068]">Tổng đơn từ backend:</span>
+              <strong className="text-base text-[#163326]">{formatPrice(String(createdOrder.total))}</strong>
+            </div>
           </div>
 
-          <fieldset className="option-group">
-            <legend>Cổng thanh toán</legend>
+          <fieldset className="option-group border-0 p-0 m-0">
+            <legend className="font-heading font-bold text-base sm:text-lg text-[#163326] mb-3">
+              Cổng thanh toán
+            </legend>
             <div className="payment-methods">
-              <label className="payment-method">
-                <input checked disabled name="payment-method" type="radio" />
-                <span><strong>VNPay Sandbox</strong><small>Ngân hàng, thẻ hoặc QR được chọn trên VNPay</small></span>
+              <label className="flex items-center gap-3 p-3.5 sm:p-4 rounded-xl border-2 border-[#254a39] bg-[#254a39]/5 cursor-pointer">
+                <input checked disabled name="payment-method" type="radio" className="w-5 h-5 accent-[#254a39]" />
+                <div>
+                  <strong className="block text-sm sm:text-base text-[#163326]">VNPay Sandbox</strong>
+                  <small className="text-xs text-[#667068]">Ngân hàng, thẻ hoặc QR được chọn trên cổng VNPay</small>
+                </div>
               </label>
             </div>
           </fieldset>
 
           <button
-            className="button button--accent checkout-submit"
+            className="w-full min-h-[48px] py-3 px-4 bg-[#c45b38] hover:bg-[#a9472b] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer flex items-center justify-center"
             disabled={
               processing ||
               (createdOrder.status !== "PENDING" && createdOrder.status !== "PAYMENT_FAILED") ||
@@ -291,11 +315,11 @@ function CheckoutContent() {
           >
             {processing ? "Đang chuyển đến VNPay..." : isExpired ? "Đơn đã hết hạn" : "Thanh toán qua VNPay"}
           </button>
-          {error && <p className="payment-result payment-result--failure" role="alert">{error}</p>}
+          {error && <p className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-xl" role="alert">{error}</p>}
           {createdOrder.status === "PAYMENT_FAILED" && (
             <section
               aria-live="polite"
-              className="payment-result payment-result--failure"
+              className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-xl space-y-1"
               role="status"
             >
               <strong>Lần thanh toán trước không thành công.</strong>
@@ -369,13 +393,13 @@ function CheckoutContent() {
                     value={selectedVoucherCode}
                     onChange={(e) => setSelectedVoucherCode(e.target.value.toUpperCase())}
                     disabled={processing || applyingVoucher}
-                    className="flex-1 text-xs px-3 py-2 bg-white border border-[#DED6CB] rounded-xl uppercase font-mono"
+                    className="flex-1 text-xs px-3.5 py-2.5 bg-white border border-[#DED6CB] rounded-xl uppercase font-mono min-h-[44px]"
                   />
                   <button
                     type="button"
                     onClick={() => handleApplyVoucher()}
                     disabled={!selectedVoucherCode || processing || applyingVoucher}
-                    className="px-3.5 py-2 bg-[#38291E] hover:bg-[#241A13] text-white text-xs font-bold rounded-xl transition disabled:opacity-40 cursor-pointer shadow-2xs"
+                    className="min-h-[44px] px-4 py-2.5 bg-[#38291E] hover:bg-[#241A13] text-white text-xs font-bold rounded-xl transition disabled:opacity-40 cursor-pointer shadow-2xs whitespace-nowrap"
                   >
                     {applyingVoucher ? "..." : "Áp dụng"}
                   </button>

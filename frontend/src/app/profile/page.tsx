@@ -317,23 +317,23 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-[#F7F5F1] py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-8">
         {/* ── 1. TIÊU ĐỀ TRANG & THÔNG TIN TỔNG QUAN ── */}
-        <div className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-6 sm:p-8 flex flex-col sm:flex-row items-start justify-between gap-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-5 sm:p-8 flex flex-col sm:flex-row items-start justify-between gap-6">
           <div className="space-y-1">
             <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-1">
               BrewLite Coffee · Khách hàng
             </p>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <h1
-                className="text-2xl sm:text-3xl font-bold text-[#30251D]"
+                className="text-xl sm:text-2xl md:text-3xl font-bold text-[#30251D]"
                 style={{ fontFamily: "var(--font-heading, serif)" }}
               >
                 {fullName || "Khách hàng BrewLite"}
               </h1>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#EAE1D2] text-[#5B3E2D] border border-[#D8CFC2]">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#EAE1D2] text-[#5B3E2D] border border-[#D8CFC2] self-start sm:self-auto">
                 Khách hàng thân thiết
               </span>
             </div>
-            <p className="text-sm text-[#76513B]">{email}</p>
+            <p className="text-xs sm:text-sm text-[#76513B]">{email}</p>
             {createdAt && (
               <p className="text-xs text-[#76513B]/70">
                 Thành viên từ: {createdAt}
@@ -341,10 +341,10 @@ export default function ProfilePage() {
             )}
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <Link
               href="/orders"
-              className="px-4 py-2 text-sm font-semibold rounded-lg border border-[#D8CFC2] text-[#30251D] hover:bg-[#FAF8F5] transition"
+              className="w-full sm:w-auto min-h-[44px] flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl border border-[#D8CFC2] text-[#30251D] hover:bg-[#FAF8F5] transition"
             >
               Lịch sử đơn hàng
             </Link>
@@ -353,7 +353,7 @@ export default function ProfilePage() {
 
         {/* ── 2. MỤC ĐIỂM THƯỞNG CỦA NGƯỜI DÙNG (LOYALTY POINTS) ── */}
         <div
-          className="text-white rounded-2xl p-6 sm:p-8 shadow-md relative overflow-hidden border border-[#D8CFC2]/20"
+          className="text-white rounded-2xl p-5 sm:p-8 shadow-md relative overflow-hidden border border-[#D8CFC2]/20"
           style={{
             background: "linear-gradient(135deg, #241810 0%, #38291E 50%, #1A110A 100%)",
           }}
@@ -365,23 +365,23 @@ export default function ProfilePage() {
                   Chương trình tích điểm
                 </span>
                 <h2
-                  className="text-xl sm:text-2xl font-bold mt-1 text-[#FFF9F0]"
+                  className="text-lg sm:text-2xl font-bold mt-1 text-[#FFF9F0]"
                   style={{ fontFamily: "var(--font-heading, serif)" }}
                 >
                   Điểm thưởng khả dụng
                 </h2>
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-4xl sm:text-5xl font-extrabold tracking-tight text-[#E7DECE]">
+                <span className="text-3xl sm:text-5xl font-extrabold tracking-tight text-[#E7DECE]">
                   {loyaltyPoints.toLocaleString("vi-VN")}
                 </span>
-                <span className="text-base text-[#E7DECE]/80 font-medium">điểm</span>
+                <span className="text-sm sm:text-base text-[#E7DECE]/80 font-medium">điểm</span>
               </div>
             </div>
 
             {/* Thông tin quy đổi điểm */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-              <div className="bg-white/5 backdrop-blur-xs rounded-xl p-4 border border-[#E7DECE]/15">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
+              <div className="bg-white/5 backdrop-blur-xs rounded-xl p-3.5 sm:p-4 border border-[#E7DECE]/15">
                 <div className="text-[#E7DECE] font-bold text-sm mb-1">
                   Tích lũy tự động
                 </div>
@@ -390,7 +390,7 @@ export default function ProfilePage() {
                 </p>
               </div>
 
-              <div className="bg-white/5 backdrop-blur-xs rounded-xl p-4 border border-[#E7DECE]/15">
+              <div className="bg-white/5 backdrop-blur-xs rounded-xl p-3.5 sm:p-4 border border-[#E7DECE]/15">
                 <div className="text-[#E7DECE] font-bold text-sm mb-1">
                   Đổi ưu đãi đặc biệt
                 </div>
@@ -399,7 +399,7 @@ export default function ProfilePage() {
                 </p>
               </div>
 
-              <div className="bg-white/5 backdrop-blur-xs rounded-xl p-4 border border-[#E7DECE]/15">
+              <div className="bg-white/5 backdrop-blur-xs rounded-xl p-3.5 sm:p-4 border border-[#E7DECE]/15">
                 <div className="text-[#E7DECE] font-bold text-sm mb-1">
                   Hạng thành viên
                 </div>
@@ -409,20 +409,20 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
               <p className="text-xs text-[#E7DECE]/80">
                 Đặt thêm món ngay hôm nay để nhận thêm điểm thưởng!
               </p>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
                 <a
                   href="#redeem-section"
-                  className="px-5 py-2.5 bg-[#FFF9F0] hover:bg-white text-[#30251D] rounded-full font-bold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer"
+                  className="min-h-[44px] px-5 py-2.5 bg-[#FFF9F0] hover:bg-white text-[#30251D] rounded-full font-bold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer flex items-center justify-center text-center"
                 >
                   Đổi ưu đãi ngay ↓
                 </a>
                 <Link
                   href="/menu"
-                  className="px-5 py-2.5 bg-[#E7DECE]/20 hover:bg-[#E7DECE]/30 text-[#FFF9F0] border border-[#E7DECE]/40 rounded-full font-bold text-xs uppercase tracking-wider transition shadow-sm"
+                  className="min-h-[44px] px-5 py-2.5 bg-[#E7DECE]/20 hover:bg-[#E7DECE]/30 text-[#FFF9F0] border border-[#E7DECE]/40 rounded-full font-bold text-xs uppercase tracking-wider transition shadow-sm flex items-center justify-center text-center"
                 >
                   Đặt đồ uống ngay
                 </Link>
@@ -434,7 +434,7 @@ export default function ProfilePage() {
         {/* ── 3. MỤC ĐỔI ĐIỂM LẤY ƯU ĐÃI (SECTION CARD CỐ ĐỊNH) ── */}
         <div
           id="redeem-section"
-          className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-6 sm:p-8 space-y-6 scroll-mt-6"
+          className="bg-white rounded-2xl shadow-sm border border-[#D8CFC2] p-5 sm:p-8 space-y-6 scroll-mt-6"
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#D8CFC2]/60 pb-4">
             <div>

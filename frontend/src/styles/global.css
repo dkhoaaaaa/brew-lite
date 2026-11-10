@@ -65,11 +65,19 @@ input {
 
 .site-nav__inner {
   display: flex;
-  min-height: 64px;
+  min-height: 58px;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 max(24px, calc((100vw - 1200px) / 2));
+  gap: 12px;
+  padding: 0 16px;
+}
+
+@media (min-width: 640px) {
+  .site-nav__inner {
+    min-height: 64px;
+    gap: 16px;
+    padding: 0 max(24px, calc((100vw - 1200px) / 2));
+  }
 }
 
 .site-nav__brand {
@@ -282,9 +290,23 @@ input {
 }
 
 .page-shell {
-  width: min(1240px, calc(100% - 48px));
+  width: 100%;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 48px 0 88px;
+  padding: 24px 16px 64px;
+}
+
+@media (min-width: 640px) {
+  .page-shell {
+    width: min(1240px, calc(100% - 48px));
+    padding: 36px 24px 72px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page-shell {
+    padding: 48px 0 88px;
+  }
 }
 
 .menu-heading {
@@ -984,15 +1006,6 @@ input {
 }
 
 @media (max-width: 680px) {
-  .site-nav__inner {
-    min-height: 58px;
-    padding: 0 16px;
-  }
-
-  .site-nav__links {
-    gap: 16px;
-  }
-
   .home-page {
     padding: 22px;
   }
@@ -1020,12 +1033,7 @@ input {
   }
 
   .product-detail h1 {
-    font-size: 40px;
-  }
-
-  .page-shell {
-    width: min(100% - 32px, 520px);
-    padding: 32px 0 64px;
+    font-size: 32px;
   }
 
   .menu-heading {
