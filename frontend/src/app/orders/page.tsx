@@ -372,21 +372,21 @@ export default function OrdersPage() {
                   </div>
 
                   {/* Card Footer */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-dashed border-[#EDE6DC]">
-                    <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 pt-4 border-t border-dashed border-[#EDE6DC]">
+                    <div className="flex items-center justify-between sm:block">
                       <span className="text-xs uppercase tracking-wider text-[#8C7E73] block">
                         Tổng cộng ({totalItemsCount} món)
                       </span>
-                      <span className="text-lg font-bold text-[#30251D]">
+                      <span className="text-base sm:text-lg font-bold text-[#30251D]">
                         {formatPrice(String(order.total))}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2.5 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       {isPayable && (
                         <>
                           <Link
-                            className="inline-flex items-center justify-center bg-[#38291E] hover:bg-[#241A13] !text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors shadow-xs"
+                            className="inline-flex items-center justify-center flex-1 sm:flex-initial min-h-[40px] bg-[#38291E] hover:bg-[#241A13] !text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-xs text-center"
                             href={`/checkout?orderId=${order.id}`}
                             style={{ color: "#ffffff" }}
                           >
@@ -396,7 +396,7 @@ export default function OrdersPage() {
                           </Link>
                           <button
                             type="button"
-                            className="inline-flex items-center justify-center bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs sm:text-sm font-semibold px-3.5 py-2.5 rounded-lg transition-colors cursor-pointer"
+                            className="inline-flex items-center justify-center min-h-[40px] bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl transition-colors cursor-pointer"
                             onClick={() => handleCancelOrder(order.id)}
                           >
                             Hủy đơn
@@ -404,7 +404,7 @@ export default function OrdersPage() {
                         </>
                       )}
                       <Link
-                        className="inline-flex items-center justify-center bg-white border border-[#DED6CB] !text-[#30251D] hover:bg-[#F5EFE6] hover:border-[#76513B] text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors shadow-2xs"
+                        className="inline-flex items-center justify-center flex-1 sm:flex-initial min-h-[40px] bg-white border border-[#DED6CB] !text-[#30251D] hover:bg-[#F5EFE6] hover:border-[#76513B] text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-2xs text-center"
                         href={`/orders/${order.id}`}
                         style={{ color: "#30251D" }}
                       >

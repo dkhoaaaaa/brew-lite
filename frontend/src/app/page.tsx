@@ -30,23 +30,23 @@ function HeroSection() {
       </div>
 
       {/* Hero Content */}
-      <div className="relative z-20 w-full max-w-6xl mx-auto px-5 sm:px-8 py-20 text-white">
+      <div className="relative z-20 w-full max-w-6xl mx-auto px-4 sm:px-8 py-14 sm:py-20 text-white">
         <div className="max-w-xl">
-          <span className="inline-block px-3.5 py-1 mb-4 text-xs font-bold tracking-[0.2em] uppercase text-[#E7DECE] bg-[#E7DECE]/15 rounded backdrop-blur-xs">
+          <span className="inline-block px-3 py-1 mb-3 sm:mb-4 text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase text-[#E7DECE] bg-[#E7DECE]/15 rounded backdrop-blur-xs">
             BREWLITE COFFEE
           </span>
-          <h1 className="text-3xl sm:text-5xl lg:text-[52px] font-bold leading-[1.18] text-[#FFF9F0] mb-4 font-heading tracking-tight drop-shadow-md">
+          <h1 className="text-2xl xs:text-3xl sm:text-5xl lg:text-[52px] font-bold leading-[1.18] text-[#FFF9F0] mb-3 sm:mb-4 font-heading tracking-tight drop-shadow-md">
             Đánh thức năng lượng
             <br />
             <span className="text-[#E7DECE] font-normal">Trọn vẹn từng khoảnh khắc.</span>
           </h1>
-          <p className="text-sm sm:text-base lg:text-[17px] leading-relaxed text-[#F5EFEB] mb-8 font-sans drop-shadow-sm max-w-lg">
+          <p className="text-xs sm:text-base lg:text-[17px] leading-relaxed text-[#F5EFEB] mb-6 sm:mb-8 font-sans drop-shadow-sm max-w-lg">
             Mỗi ly cà phê là một trải nghiệm, mỗi hương vị là một câu chuyện.
             Thưởng thức hương vị cà phê rang mộc thượng hạng và đồ uống tươi mát.
           </p>
           <Link
             href="/menu"
-            className="inline-flex items-center gap-2.5 px-8 py-3.5 bg-[#E7DECE] hover:bg-white text-[#30251D] hover:text-[#140D09] text-xs sm:text-sm font-extrabold tracking-wider uppercase rounded-full shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5"
+            className="inline-flex items-center gap-2 px-6 sm:px-8 py-3 sm:py-3.5 bg-[#E7DECE] hover:bg-white text-[#30251D] hover:text-[#140D09] text-xs sm:text-sm font-extrabold tracking-wider uppercase rounded-full shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5 min-h-[44px]"
           >
             Khám phá thực đơn
             <svg
@@ -129,14 +129,14 @@ const CATEGORY_ITEMS: CategoryItem[] = [
 
 function CategoriesBar() {
   return (
-    <section className="bg-[#EAE1D2] border-b border-[#D8CFC2] py-6 sm:py-7" aria-label="Danh mục sản phẩm nhanh">
-      <div className="max-w-4xl mx-auto px-5 sm:px-8">
-        <div className="flex flex-row items-center justify-center gap-8 sm:gap-16 lg:gap-24">
+    <section className="bg-[#EAE1D2] border-b border-[#D8CFC2] py-5 sm:py-7" aria-label="Danh mục sản phẩm nhanh">
+      <div className="max-w-4xl mx-auto px-4 sm:px-8">
+        <div className="flex flex-row items-center justify-center gap-4 sm:gap-14 lg:gap-20">
           {CATEGORY_ITEMS.map((item) => (
             <Link
               key={item.id}
               href={item.href}
-              className="group flex flex-col items-center gap-2.5 text-[#30251D] p-2 sm:px-6 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/40"
+              className="group flex flex-col items-center gap-2 text-[#30251D] p-1.5 sm:px-6 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/40 min-w-[70px]"
             >
               <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white border border-[#D8CFC2] text-[#76513B] flex items-center justify-center shadow-xs transition-colors duration-200 group-hover:bg-[#38291E] group-hover:text-[#E7DECE] group-hover:border-[#38291E]">
                 {item.icon}
@@ -167,7 +167,7 @@ function LandingProductCard({ product }: LandingProductCardProps) {
     : "";
 
   return (
-    <article className="group bg-white border border-[#D8CFC2] hover:border-[#76513B] rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-1 hover:shadow-lg relative">
+    <article className="group bg-white border border-[#D8CFC2] hover:border-[#76513B] rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md relative">
       {/* Media Image */}
       <div className="relative aspect-[4/5] bg-[#EAE5DD] overflow-hidden">
         {fullImageUrl ? (
@@ -176,14 +176,14 @@ function LandingProductCard({ product }: LandingProductCardProps) {
             alt={product.name}
             fill
             unoptimized
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#F0ECE4] to-[#E2DDD4] text-[#76513B]">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-[#F0ECE4] to-[#E2DDD4] text-[#76513B]">
             <svg
-              width="44"
-              height="44"
+              width="36"
+              height="36"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -198,28 +198,28 @@ function LandingProductCard({ product }: LandingProductCardProps) {
               <line x1="10" y1="1" x2="10" y2="4" />
               <line x1="14" y1="1" x2="14" y2="4" />
             </svg>
-            <span className="font-heading text-xs font-bold tracking-wider opacity-70">BrewLite</span>
+            <span className="font-heading text-[11px] font-bold tracking-wider opacity-70">BrewLite</span>
           </div>
         )}
       </div>
 
       {/* Info Body */}
-      <div className="p-4 sm:p-5 flex flex-col flex-1">
-        <h3 className="text-base sm:text-[17px] font-bold text-[#30251D] mb-1 font-heading line-clamp-1 hover:text-[#76513B] transition-colors">
+      <div className="p-3 sm:p-4 lg:p-5 flex flex-col flex-1">
+        <h3 className="text-sm sm:text-base font-bold text-[#30251D] mb-1 font-heading line-clamp-1 hover:text-[#76513B] transition-colors">
           <Link href={`/products/${encodeURIComponent(product.id)}`}>
             {product.name}
           </Link>
         </h3>
-        <p className="text-xs text-[#76513B] leading-relaxed mb-4 line-clamp-2 min-h-[36px]">
+        <p className="text-[11.5px] sm:text-xs text-[#76513B] leading-relaxed mb-3 sm:mb-4 line-clamp-2 min-h-[30px] sm:min-h-[36px]">
           {product.description || "Hương vị nguyên bản, đậm đà được pha chế tỉ mỉ từng chi tiết."}
         </p>
 
         {/* Footer: Price + Order CTA */}
-        <div className="mt-auto pt-3 border-t border-[#D8CFC2]/50 flex items-center justify-between gap-2">
-          <span className="text-[15px] font-extrabold text-[#30251D]">{formatPrice(product.price)}</span>
+        <div className="mt-auto pt-2.5 sm:pt-3 border-t border-[#D8CFC2]/50 flex flex-wrap items-center justify-between gap-1.5">
+          <span className="text-sm sm:text-[15px] font-extrabold text-[#30251D]">{formatPrice(product.price)}</span>
           <Link
             href={`/products/${encodeURIComponent(product.id)}`}
-            className="inline-flex items-center justify-center px-4 py-1.5 bg-[#38291E] hover:bg-[#50392A] text-[#F7F5F1] text-xs font-bold rounded-full transition-all duration-200 hover:-translate-y-0.5 whitespace-nowrap"
+            className="inline-flex items-center justify-center px-3 sm:px-4 py-1.5 bg-[#38291E] hover:bg-[#50392A] text-[#F7F5F1] text-[11px] sm:text-xs font-bold rounded-full transition-all duration-200 hover:-translate-y-0.5 whitespace-nowrap min-h-[32px]"
             aria-label={`Đặt món ${product.name}`}
           >
             Đặt món
@@ -264,19 +264,19 @@ function ProductShowcaseSection({
   };
 
   return (
-    <section className="py-14 sm:py-20 bg-[#F7F5F1] border-b border-[#D8CFC2]" aria-label={title}>
-      <div className="max-w-6xl mx-auto px-5 sm:px-8">
+    <section className="py-12 sm:py-20 bg-[#F7F5F1] border-b border-[#D8CFC2]" aria-label={title}>
+      <div className="max-w-6xl mx-auto px-4 sm:px-8">
         {/* Section Header with Professional Chevron Controls */}
-        <header className="text-center mb-10">
+        <header className="text-center mb-8 sm:mb-10">
           {eyebrowScript && (
-            <p className="font-heading italic text-lg sm:text-xl text-[#76513B] mb-2">
+            <p className="font-heading italic text-base sm:text-xl text-[#76513B] mb-2">
               {eyebrowScript}
             </p>
           )}
-          <div className="flex items-center justify-center gap-4 sm:gap-6">
+          <div className="flex items-center justify-center gap-2 sm:gap-6">
             <button
               type="button"
-              className="w-10 h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer min-w-[36px] min-h-[36px]"
               onClick={handlePrev}
               disabled={startIndex === 0 || loading || products.length <= itemsPerPage}
               aria-label="Xem sản phẩm trước"
@@ -287,13 +287,13 @@ function ProductShowcaseSection({
               </svg>
             </button>
 
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-wider text-[#30251D] font-heading uppercase">
+            <h2 className="text-xl sm:text-3xl lg:text-4xl font-bold tracking-wider text-[#30251D] font-heading uppercase">
               {title}
             </h2>
 
             <button
               type="button"
-              className="w-10 h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[#D8CFC2] bg-white text-[#30251D] hover:bg-[#38291E] hover:text-white hover:border-[#38291E] disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-[#30251D] disabled:hover:border-[#D8CFC2] disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 shrink-0 shadow-2xs cursor-pointer min-w-[36px] min-h-[36px]"
               onClick={handleNext}
               disabled={startIndex >= maxIndex || loading || products.length <= itemsPerPage}
               aria-label="Xem sản phẩm kế tiếp"
@@ -308,12 +308,12 @@ function ProductShowcaseSection({
 
         {/* Loading Skeleton */}
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="bg-white border border-[#D8CFC2] rounded-2xl overflow-hidden animate-pulse">
                 <div className="aspect-[4/5] bg-neutral-200" />
-                <div className="p-4 space-y-3">
-                  <div className="h-5 bg-neutral-200 rounded w-3/4" />
+                <div className="p-3 sm:p-4 space-y-2.5">
+                  <div className="h-4 sm:h-5 bg-neutral-200 rounded w-3/4" />
                   <div className="h-3 bg-neutral-100 rounded w-full" />
                   <div className="h-4 bg-neutral-200 rounded w-1/3 pt-2" />
                 </div>
@@ -327,7 +327,7 @@ function ProductShowcaseSection({
           <div className="text-center py-10 flex flex-col items-center justify-center gap-3" role="alert">
             <p className="text-sm text-red-600">{error}</p>
             <button
-              className="px-6 py-2 bg-[#38291E] hover:bg-[#50392A] text-white text-xs font-bold rounded-full transition-colors cursor-pointer"
+              className="px-6 py-2.5 bg-[#38291E] hover:bg-[#50392A] text-white text-xs font-bold rounded-full transition-colors cursor-pointer min-h-[40px]"
               onClick={onRetry}
               type="button"
             >
@@ -345,7 +345,7 @@ function ProductShowcaseSection({
 
         {/* Products Grid */}
         {!loading && !error && visibleProducts.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
             {visibleProducts.map((product) => (
               <LandingProductCard
                 key={product.id}

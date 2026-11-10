@@ -30,8 +30,8 @@ export default function Navbar() {
           Brew<span>Lite</span>
         </Link>
 
-        {/* Điều hướng center – ẩn trên mobile */}
-        <div className="site-nav__links">
+        {/* Điều hướng center – ẩn trên mobile (< md) */}
+        <div className="site-nav__links hidden md:flex">
           <Link href="/" className="site-nav__link">
             Trang chủ
           </Link>
@@ -46,17 +46,17 @@ export default function Navbar() {
         </div>
 
         {/* Actions: icon-based buttons tối giản */}
-        <div className="site-nav__actions flex items-center gap-1.5 sm:gap-2">
+        <div className="site-nav__actions flex items-center gap-1 sm:gap-2">
           {/* 1. Icon Tìm kiếm */}
           <Link
             href="/menu"
-            className="w-9 h-9 flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
+            className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
             aria-label="Tìm kiếm món"
             title="Tìm kiếm món"
           >
             <svg
-              width="19"
-              height="19"
+              width="20"
+              height="20"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -75,7 +75,7 @@ export default function Navbar() {
             href="/cart"
             aria-label={`Giỏ hàng, ${itemCount} sản phẩm`}
             title="Giỏ hàng"
-            className="relative w-9 h-9 flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
+            className="relative w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
           >
             <svg
               width="20"
@@ -93,7 +93,7 @@ export default function Navbar() {
               <path d="M16 10a4 4 0 0 1-8 0" />
             </svg>
             {itemCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-amber-600 text-white flex items-center justify-center shadow-xs">
+              <span className="absolute 0.5 top-0.5 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-amber-600 text-white flex items-center justify-center shadow-xs">
                 {itemCount > 9 ? "9+" : itemCount}
               </span>
             )}
@@ -104,7 +104,7 @@ export default function Navbar() {
               {/* 3. Icon Thông tin cá nhân / Tài khoản */}
               <Link
                 href="/profile"
-                className="w-9 h-9 flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
+                className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-white hover:bg-white/10 transition-colors"
                 aria-label="Thông tin cá nhân"
                 title="Thông tin cá nhân"
               >
@@ -127,14 +127,14 @@ export default function Navbar() {
               {/* 4. Icon Đăng xuất */}
               <button
                 onClick={handleLogout}
-                className="w-9 h-9 flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-rose-400 hover:bg-white/10 transition-colors cursor-pointer"
+                className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-full text-[#E7DECE]/85 hover:text-rose-400 hover:bg-white/10 transition-colors cursor-pointer"
                 aria-label="Đăng xuất"
                 title="Đăng xuất"
                 type="button"
               >
                 <svg
-                  width="19"
-                  height="19"
+                  width="20"
+                  height="20"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -151,10 +151,10 @@ export default function Navbar() {
             </>
           ) : (
             <div className="flex items-center gap-1.5 ml-1">
-              {/* Icon Đăng nhập khi chưa có tài khoản */}
+              {/* Nút Đăng nhập khi chưa có tài khoản */}
               <Link
                 href={itemCount > 0 ? `/login?redirect=${encodeURIComponent("/cart?autoCheckout=true")}` : "/login"}
-                className="h-8 px-3 rounded-full text-xs font-semibold text-[#E7DECE] hover:text-white bg-white/10 hover:bg-white/15 transition-colors flex items-center gap-1.5"
+                className="h-9 px-3 sm:px-3.5 rounded-full text-xs font-semibold text-[#E7DECE] hover:text-white bg-white/10 hover:bg-white/15 transition-colors flex items-center gap-1.5 min-h-[36px]"
                 title="Đăng nhập"
               >
                 <svg
@@ -172,14 +172,14 @@ export default function Navbar() {
                   <polyline points="10 17 15 12 10 7" />
                   <line x1="15" y1="12" x2="3" y2="12" />
                 </svg>
-                <span>Đăng nhập</span>
+                <span className="hidden xs:inline">Đăng nhập</span>
               </Link>
             </div>
           )}
 
           {/* Hamburger toggle dạng icon trên mobile */}
           <button
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-[#E7DECE] hover:bg-white/10 sm:hidden transition-colors cursor-pointer"
+            className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-[#E7DECE] hover:bg-white/10 md:hidden transition-colors cursor-pointer"
             onClick={() => setMobileOpen((prev) => !prev)}
             aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
             aria-expanded={mobileOpen}

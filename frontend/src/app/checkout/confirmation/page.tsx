@@ -86,15 +86,20 @@ function OrderConfirmationContent() {
 
   if (!orderId) {
     return (
-      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 flex items-center justify-center">
-        <div className="max-w-md w-full bg-white border border-[#E5DFD7] rounded-2xl p-8 text-center shadow-sm">
-          <h2 className="text-xl font-bold text-[#30251D] mb-2 font-heading">
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-8 sm:py-12 px-4 sm:px-6 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white border border-[#E5DFD7] rounded-2xl p-5 sm:p-8 text-center shadow-sm">
+          <h2 className="text-lg sm:text-xl font-bold text-[#30251D] mb-2 font-heading">
             Không tìm thấy mã đơn hàng
           </h2>
-          <p className="text-sm text-[#6F6258] mb-6">
+          <p className="text-xs sm:text-sm text-[#6F6258] mb-6">
             Trở về từ VNPay không đủ để xác nhận thanh toán nếu không có đơn hàng hợp lệ.
           </p>
-          <Link className="button button--dark" href="/orders">Đơn hàng của tôi</Link>
+          <Link
+            className="inline-flex items-center justify-center min-h-[44px] w-full px-5 py-2.5 bg-[#38291E] hover:bg-[#241A13] text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-xs"
+            href="/orders"
+          >
+            Đơn hàng của tôi
+          </Link>
         </div>
       </main>
     );
@@ -114,8 +119,8 @@ function OrderConfirmationContent() {
 
   if (error || !order) {
     return (
-      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 flex items-center justify-center">
-        <div className="max-w-md w-full bg-white border border-[#E5DFD7] rounded-2xl p-8 text-center shadow-sm">
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-8 sm:py-12 px-4 sm:px-6 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white border border-[#E5DFD7] rounded-2xl p-5 sm:p-8 text-center shadow-sm">
           <div className="w-12 h-12 rounded-full bg-[#F5EFE6] text-[#76513B] flex items-center justify-center mx-auto mb-4 text-xl font-bold">
             !
           </div>

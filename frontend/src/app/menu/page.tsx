@@ -261,9 +261,12 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Lưới sản phẩm */}
+        {/* Lưới sản phẩm responsive mobile-first */}
         {!loading && !error && paginatedProducts.length > 0 && (
-          <section className="lp-product-grid" aria-label="Danh sách món">
+          <section
+            className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 mb-8"
+            aria-label="Danh sách món"
+          >
             {paginatedProducts.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
@@ -272,17 +275,17 @@ useEffect(() => {
 
         {/* Thanh chuyển trang truyền thống */}
         {!loading && !error && totalPages > 1 && (
-          <div className="flex justify-center items-center gap-4 mt-8 pb-12">
+          <div className="flex justify-center items-center gap-3 sm:gap-4 mt-6 pb-12">
             <button
               type="button"
               onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
               disabled={currentPage <= 1}
-              className="px-4 py-2 bg-amber-800 text-white rounded-lg disabled:opacity-40 hover:bg-amber-900 transition cursor-pointer"
+              className="min-h-[44px] px-4 py-2.5 bg-[#38291E] hover:bg-[#251A13] text-white font-medium text-xs sm:text-sm rounded-xl disabled:opacity-40 transition cursor-pointer shadow-xs flex items-center justify-center"
             >
               Trang trước
             </button>
 
-            <span className="font-medium text-gray-700">
+            <span className="font-semibold text-xs sm:text-sm text-[#30251D] px-2 text-center whitespace-nowrap">
               Trang {currentPage} / {totalPages}
             </span>
 
@@ -290,7 +293,7 @@ useEffect(() => {
               type="button"
               onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
               disabled={currentPage >= totalPages}
-              className="px-4 py-2 bg-amber-800 text-white rounded-lg disabled:opacity-40 hover:bg-amber-900 transition cursor-pointer"
+              className="min-h-[44px] px-4 py-2.5 bg-[#38291E] hover:bg-[#251A13] text-white font-medium text-xs sm:text-sm rounded-xl disabled:opacity-40 transition cursor-pointer shadow-xs flex items-center justify-center"
             >
               Trang sau
             </button>

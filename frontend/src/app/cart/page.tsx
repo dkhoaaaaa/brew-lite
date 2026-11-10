@@ -210,67 +210,154 @@ function CartContent() {
   }
 
   return (
-    <main className="page-shell cart-page">
-      <header className="cart-heading">
+    <main className="page-shell cart-page max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-6 sm:mb-8 pb-4 border-b border-[#d8d8cb]">
         <div>
-          <p className="eyebrow">BrewLite · giỏ hàng</p>
-          <h1>Món đã chọn</h1>
+          <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-1">
+            BrewLite · giỏ hàng
+          </p>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-heading text-[#163326]">
+            Món đã chọn
+          </h1>
         </div>
-        <Link className="back-link" href="/menu">Tiếp tục mua hàng</Link>
+        <Link
+          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#667068] hover:text-[#163326] transition-colors"
+          href="/menu"
+        >
+          ← Tiếp tục mua hàng
+        </Link>
       </header>
-      <p className="state-message" role="status">
-        Giỏ hàng hiện được lưu trên thiết bị này. Backend chưa có API giỏ hàng nên
-        chưa đồng bộ giữa thiết bị hoặc lên cơ sở dữ liệu.
+
+      <p className="text-xs text-[#667068] mb-6 p-3 bg-[#FAF8F5] border border-[#d8d8cb] rounded-xl" role="status">
+        Giỏ hàng hiện được lưu trên thiết bị này. Backend chưa có API giỏ hàng nên chưa đồng bộ giữa thiết bị hoặc lên cơ sở dữ liệu.
       </p>
-      {storageError && <p className="payment-result payment-result--failure" role="alert">{storageError}</p>}
-      <div className="cart-layout">
-        <section aria-label="Các món trong giỏ" className="cart-lines">
+
+      {storageError && (
+        <p className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-xl mb-6" role="alert">
+          {storageError}
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8 items-start">
+        {/* Danh sách các món trong giỏ */}
+        <section aria-label="Các món trong giỏ" className="flex flex-col divide-y divide-[#d8d8cb] border-t border-b border-[#d8d8cb]">
           {items.map((item) => (
-            <article className="cart-line" key={item.cartItemId}>
-              <div className="cart-line__image">
-                {item.productImageUrl ? (
-                  <Image src={item.productImageUrl} alt="" fill unoptimized sizes="96px" />
-                ) : (
-                  <span aria-hidden="true">BL</span>
-                )}
-              </div>
-              <div className="cart-line__details">
-                <h2>{item.productName}</h2>
-                <p>{item.size ? `Size ${item.size.sizeCode}` : "Không chọn size"}</p>
-                <p>{item.toppings.length ? item.toppings.map((topping) => topping.name).join(", ") : "Không topping"}</p>
-                <p>Đường {item.sugarPercent}% · Đá {item.icePercent}%</p>
-                <strong>{formatPrice(item.unitPrice)} / món</strong>
-              </div>
-              <div className="cart-line__controls">
-                <div className="quantity-control" aria-label={`Số lượng ${item.productName}`}>
-                  <button aria-label="Giảm số lượng" onClick={() => decreaseItem(item.cartItemId)} type="button">−</button>
-                  <span aria-live="polite">{item.quantity}</span>
-                  <button aria-label="Tăng số lượng" onClick={() => increaseItem(item.cartItemId)} type="button">+</button>
+            <article
+              className="py-4 sm:py-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+              key={item.cartItemId}
+            >
+              <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+                <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden bg-[#dce3d9] shrink-0 border border-[#d8d8cb]">
+                  {item.productImageUrl ? (
+                    <Image
+                      src={item.productImageUrl}
+                      alt={item.productName}
+                      fill
+                      unoptimized
+                      sizes="80px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <span className="w-full h-full flex items-center justify-center font-heading text-lg font-bold text-[#254a39]">
+                      BL
+                    </span>
+                  )}
                 </div>
-                <strong>{formatPrice(fromMinorUnits(toMinorUnits(item.unitPrice) * item.quantity))}</strong>
-                <button className="text-button" onClick={() => removeItem(item.cartItemId)} type="button">Xóa món</button>
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <h2 className="font-heading font-bold text-sm sm:text-base text-[#163326] truncate">
+                    {item.productName}
+                  </h2>
+                  <p className="text-xs text-[#667068]">
+                    {item.size ? `Size ${item.size.sizeCode}` : "Không chọn size"}
+                  </p>
+                  {item.toppings.length > 0 && (
+                    <p className="text-xs text-[#667068] truncate">
+                      Topping: {item.toppings.map((topping) => topping.name).join(", ")}
+                    </p>
+                  )}
+                  <p className="text-xs text-[#667068]">
+                    Đường {item.sugarPercent}% · Đá {item.icePercent}%
+                  </p>
+                  <strong className="text-xs text-[#254a39] block pt-0.5">
+                    {formatPrice(item.unitPrice)} / món
+                  </strong>
+                </div>
+              </div>
+
+              {/* Cụm điều khiển: Bộ tăng giảm số lượng + Giá tiền + Xóa món */}
+              <div className="flex items-center justify-between w-full sm:w-auto sm:flex-col sm:items-end gap-3 pt-2 sm:pt-0 border-t border-[#d8d8cb]/40 sm:border-t-0">
+                <div className="inline-flex items-center border border-[#d8d8cb] rounded-lg bg-white overflow-hidden shadow-2xs h-9 sm:h-10">
+                  <button
+                    aria-label="Giảm số lượng"
+                    onClick={() => decreaseItem(item.cartItemId)}
+                    type="button"
+                    className="w-9 h-full flex items-center justify-center text-[#254a39] hover:bg-[#fbfaf6] active:bg-[#dce3d9] text-base font-bold cursor-pointer transition-colors"
+                  >
+                    −
+                  </button>
+                  <span className="w-9 text-center font-bold text-xs sm:text-sm text-[#17231c]" aria-live="polite">
+                    {item.quantity}
+                  </span>
+                  <button
+                    aria-label="Tăng số lượng"
+                    onClick={() => increaseItem(item.cartItemId)}
+                    type="button"
+                    className="w-9 h-full flex items-center justify-center text-[#254a39] hover:bg-[#fbfaf6] active:bg-[#dce3d9] text-base font-bold cursor-pointer transition-colors"
+                  >
+                    +
+                  </button>
+                </div>
+                <div className="flex items-center sm:flex-col sm:items-end gap-2.5">
+                  <strong className="text-sm sm:text-base font-extrabold text-[#163326]">
+                    {formatPrice(fromMinorUnits(toMinorUnits(item.unitPrice) * item.quantity))}
+                  </strong>
+                  <button
+                    className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                    onClick={() => removeItem(item.cartItemId)}
+                    type="button"
+                  >
+                    Xóa món
+                  </button>
+                </div>
               </div>
             </article>
           ))}
         </section>
-        <aside className="cart-summary">
-          <p className="eyebrow">Tổng kết</p>
-          <div>
-            <span>{items.reduce((count, item) => count + item.quantity, 0)} món</span>
-            <strong>{formatPrice(fromMinorUnits(totalMinorUnits))}</strong>
+
+        {/* Khung tổng kết đơn hàng */}
+        <aside className="bg-white border border-[#d8d8cb] rounded-2xl p-5 sm:p-6 shadow-sm lg:sticky lg:top-24 space-y-4">
+          <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B]">
+            Tổng kết đơn hàng
+          </p>
+          <div className="flex items-center justify-between py-3 border-t border-b border-[#d8d8cb] text-sm">
+            <span className="text-[#667068]">
+              {items.reduce((count, item) => count + item.quantity, 0)} món
+            </span>
+            <strong className="text-lg font-extrabold text-[#163326]">
+              {formatPrice(fromMinorUnits(totalMinorUnits))}
+            </strong>
           </div>
-          <p>Đây là tạm tính. Đơn hàng sẽ được tạo và chuyển sang bước thanh toán.</p>
-          {errorMessage && <p className="payment-result payment-result--failure" role="alert">{errorMessage}</p>}
+          <p className="text-xs text-[#667068] leading-relaxed">
+            Đây là tạm tính. Đơn hàng sẽ được tạo và chuyển sang bước thanh toán.
+          </p>
+
+          {errorMessage && (
+            <p className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl" role="alert">
+              {errorMessage}
+            </p>
+          )}
+
           {!isAuthenticated && (
             <Link
-              className="text-button"
+              className="block text-center text-xs font-bold text-[#254a39] hover:underline py-1"
               href={`/login?redirect=${encodeURIComponent("/cart?autoCheckout=true")}`}
             >
-              Đăng nhập trước khi thanh toán
+              Đăng nhập trước khi thanh toán →
             </Link>
           )}
+
           <button
-            className="button button--accent"
+            className="w-full min-h-[48px] py-3 px-4 bg-[#c45b38] hover:bg-[#a9472b] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer flex items-center justify-center"
             disabled={isSubmitting}
             onClick={handleCreateOrder}
             type="button"

@@ -111,19 +111,19 @@ function LoginForm() {
       : "/register";
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-[#F7F5F1]">
-      <div className="max-w-md w-full space-y-6 bg-white p-8 sm:p-10 rounded-2xl shadow-sm border border-[#D8CFC2]">
+    <div className="min-h-[85vh] flex items-center justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-8 bg-[#F7F5F1]">
+      <div className="max-w-md w-full space-y-6 bg-white p-5 sm:p-8 md:p-10 rounded-2xl shadow-sm border border-[#D8CFC2]">
         <div className="text-center">
           <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-2">
             BrewLite Coffee
           </p>
           <h1
-            className="text-2xl sm:text-3xl font-bold text-[#30251D]"
+            className="text-xl sm:text-2xl md:text-3xl font-bold text-[#30251D]"
             style={{ fontFamily: "var(--font-heading, serif)" }}
           >
             Đăng nhập tài khoản
           </h1>
-          <p className="mt-2 text-sm text-[#76513B]/80">
+          <p className="mt-2 text-xs sm:text-sm text-[#76513B]/80 leading-relaxed">
             Ứng dụng đặt đồ uống và thanh toán không dùng tiền mặt
           </p>
         </div>
@@ -173,7 +173,7 @@ function LoginForm() {
                   setEmail(e.target.value);
                   if (loggedOutToast) setLoggedOutToast(false);
                 }}
-                className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
+                className="w-full min-h-[44px] px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
                 placeholder="vidu@gmail.com"
               />
             </div>
@@ -195,7 +195,7 @@ function LoginForm() {
                   setPassword(e.target.value);
                   if (loggedOutToast) setLoggedOutToast(false);
                 }}
-                className="w-full px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
+                className="w-full min-h-[44px] px-3.5 py-2.5 border border-[#D8CFC2] bg-[#FAF8F5] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#76513B] focus:bg-white text-[#30251D] text-sm transition"
                 placeholder="••••••••"
               />
             </div>
@@ -205,7 +205,7 @@ function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-bold uppercase tracking-wider text-[#FFF9F0] bg-[#38291E] hover:bg-[#251A13] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#76513B] disabled:opacity-50 transition cursor-pointer"
+              className="w-full min-h-[48px] flex justify-center items-center py-3 px-4 rounded-xl shadow-sm text-xs sm:text-sm font-bold uppercase tracking-wider text-[#FFF9F0] bg-[#38291E] hover:bg-[#251A13] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#76513B] disabled:opacity-50 transition cursor-pointer"
             >
               {loading ? "Đang xử lý..." : "Đăng nhập"}
             </button>

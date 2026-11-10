@@ -21,46 +21,14 @@ export function Toast({ title, message, onClose, duration = 4500 }: ToastProps) 
     <div
       role="alert"
       aria-live="assertive"
-      style={{
-        position: "fixed",
-        bottom: "24px",
-        right: "24px",
-        zIndex: 9999,
-        maxWidth: "420px",
-        width: "calc(100vw - 32px)",
-        backgroundColor: "#FFFFFF",
-        border: "1px solid #DED6CB",
-        borderLeft: "4px solid #B84A39",
-        borderRadius: "8px",
-        boxShadow: "0 10px 25px -5px rgba(48, 37, 29, 0.12), 0 4px 10px rgba(48, 37, 29, 0.06)",
-        padding: "14px 16px",
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "12px",
-        fontFamily: "var(--font-sans, inherit)",
-      }}
+      className="fixed bottom-4 left-4 right-4 mx-auto sm:left-auto sm:right-6 sm:bottom-6 w-auto max-w-sm sm:max-w-[420px] sm:w-[420px] z-[9999] bg-white border border-[#DED6CB] border-l-4 border-l-[#B84A39] rounded-xl shadow-xl p-3.5 sm:p-4 flex items-start gap-3 transition-all font-sans"
     >
-      <div style={{ flex: 1 }}>
-        <h4
-          style={{
-            margin: 0,
-            fontSize: "14px",
-            fontWeight: 600,
-            color: "#30251D",
-            lineHeight: 1.4,
-          }}
-        >
+      <div className="flex-1 min-w-0">
+        <h4 className="m-0 text-sm font-semibold text-[#30251D] leading-snug">
           {title}
         </h4>
         {message && (
-          <p
-            style={{
-              margin: "4px 0 0",
-              fontSize: "12.5px",
-              color: "#6B5E55",
-              lineHeight: 1.5,
-            }}
-          >
+          <p className="mt-1 mb-0 text-xs text-[#6B5E55] leading-relaxed break-words">
             {message}
           </p>
         )}
@@ -68,22 +36,7 @@ export function Toast({ title, message, onClose, duration = 4500 }: ToastProps) 
       <button
         type="button"
         onClick={onClose}
-        style={{
-          background: "transparent",
-          border: "none",
-          padding: "2px 6px",
-          cursor: "pointer",
-          color: "#9C8E84",
-          fontSize: "15px",
-          lineHeight: 1,
-          borderRadius: "4px",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = "#30251D";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = "#9C8E84";
-        }}
+        className="w-8 h-8 min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg text-[#9C8E84] hover:text-[#30251D] hover:bg-[#FAF8F5] transition-colors cursor-pointer text-sm shrink-0"
         aria-label="Đóng thông báo"
       >
         ✕
@@ -91,4 +44,3 @@ export function Toast({ title, message, onClose, duration = 4500 }: ToastProps) 
     </div>
   );
 }
-
