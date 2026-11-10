@@ -1,0 +1,209 @@
+@startuml
+
+title BrewLite - Sequence Diagram: Đặt hàng và thanh toán VNPay
+
+autonumber
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+actor "Customer" as C
+participant "Next.js UI" as UI
+participant "NestJS API" as API
+database "Database" as DB
+participant "Payment Service" as VNP
+
+== GIAI ĐOẠN 1 & 2: ĐẶT HÀNG, KIỂM TRA GIÁ & TRỪ TỒN KHO ==
+
+C -> UI: Click nút "Đặt hàng"
+activate UI
+
+UI -> UI: handleCreateOrder()\n-> toCreateOrderPayload(items)
+UI -> API: createOrder(payload, userId, idempotencyKey)\n[POST /orders]
+activate API
+
+API -> API: ValidationPipe.transform(CreateOrderDto)
+API -> API: OrdersController.getUserId() -> jwtService.verify()
+API -> API: OrdersService.create(userId, dto, idempotencyKey)
+
+API -> DB: prisma.payment.findUnique(idempotencyKey)
+activate DB
+DB --> API: existingPayment / null
+deactivate DB
+
+alt [Request trùng idempotencyKey]
+
+    API -> API: assertOrderIdempotencyOwner()
+    API --> UI: 201 Created (serializeOrder(existingPayment.order))
+
+else [Request mới]
+
+    API -> DB: Promise.all([user.findFirst, product.findMany,\nproductSize.findMany, productTopping.findMany, productRecipe.findMany])
+    activate DB
+    DB --> API: Dữ liệu gốc (Price, Size, Topping, Recipe, Stock)
+    deactivate DB
+
+    API -> API: Tính giá Server-side (unitPrice, lineTotal, subtotal)\n& Tổng hợp nhu cầu nguyên liệu (ingredientDemandMap)
+
+    alt [Sản phẩm/Size hợp lệ & Đủ tồn kho nguyên liệu]
+
+        group Transaction - executeOrderCreation(tx)
+
+            API -> DB: BEGIN TRANSACTION ($transaction)
+            activate DB
+
+            API -> DB: tx.ingredient.updateMany(where: id, version, stockQuantity >= reqQty)
+            API -> DB: tx.product.updateMany() / tx.topping.updateMany()
+
+            alt [Optimistic Lock thành công (count > 0)]
+                API -> DB: tx.order.create(status: PENDING, orderItems, statusHistory)
+                API -> DB: tx.payment.create(provider: BREWLITE, status: PENDING)
+                API -> DB: COMMIT
+                DB --> API: Order Created
+            else [Xung đột version / count == 0]
+                API -> DB: ROLLBACK
+                DB --> API: ConflictException (409)
+            end
+            deactivate DB
+
+        end
+
+        API --> UI: 201 Created (CreatedOrderResponse) / 409 Conflict
+
+    else [Không đủ tồn kho hoặc sản phẩm/user không hợp lệ]
+        API --> UI: 400 Bad Request
+    end
+
+end
+
+deactivate API
+
+alt [Tạo đơn thành công (201 Created)]
+    UI -> UI: clearCart() & router.push("/checkout?orderId=...")
+    UI --> C: Hiển thị trang Checkout
+else [Lỗi tạo đơn (400 / 409)]
+    UI --> C: Hiển thị thông báo lỗi
+end
+deactivate UI
+
+== GIAI ĐOẠN 3: KHỞI TẠO & THANH TOÁN VNPAY ==
+
+C -> UI: Click "Thanh toán qua VNPay Sandbox"
+activate UI
+UI -> UI: submitVnpayPayment()
+UI -> API: createVnpayPayment(orderId, idempotencyKey)\n[POST /payments/orders/:id/vnpay]
+activate API
+
+API -> API: JwtAuthGuard.canActivate() -> JwtStrategy.validate()
+API -> DB: prisma.user.findUnique(payload.sub)
+activate DB
+DB --> API: User { id, isActive: true }
+deactivate DB
+
+API -> API: PaymentsController.createVnpayPayment()\n-> PaymentsService.createVnpayPayment()
+API -> API: PaymentsService.getVnpayConfig()
+
+API -> DB: $transaction: SELECT ... FOR UPDATE\n& tx.payment.findUnique(idempotencyKey) / findFirst(PENDING)
+activate DB
+
+alt [Chưa có attempt PENDING]
+    API -> DB: tx.order.update(expiresAt) & tx.payment.create(VNPAY, PENDING)
+    DB --> API: Payment Record
+else [Tái sử dụng attempt PENDING]
+    DB --> API: Existing Payment Record
+end
+deactivate DB
+
+API -> API: vietnamTimestamp(), orderedQuery() & createHmac("sha512", hashSecret)
+API --> UI: 200 OK { paymentUrl, orderId, paymentStatus }
+deactivate API
+
+UI -> UI: window.location.assign(paymentUrl)
+UI --> C: Chuyển hướng trình duyệt sang cổng VNPay
+deactivate UI
+
+C -> VNP: Nhập thẻ test NCB & xác nhận OTP
+activate VNP
+
+VNP -> API: GET /payments/vnpay/ipn
+activate API
+API -> API: PaymentsController.handleVnpayIpn()\n-> PaymentsService.handleIpn()
+API -> API: verifySignature(params, hashSecret)
+
+API -> DB: prisma.payment.findUnique(vnp_TxnRef)
+activate DB
+DB --> API: Payment Status
+deactivate DB
+
+alt [IPN đã xử lý trước đó]
+    API --> VNP: { RspCode: "00" / "02" } (Không cập nhật trùng)
+else [Đơn còn hạn & Thanh toán thành công (00/00)]
+    API -> DB: BEGIN TRANSACTION
+    activate DB
+    API -> DB: tx.payment.update(SUCCESS) & tx.order.update(PAID, pointsEarned: 100)
+    API -> DB: tx.orderStatusHistory.create(PAID)
+    API -> DB: tx.user.update(loyaltyPoints + 100)
+    opt [Đơn có áp dụng mã khuyến mại]
+        API -> DB: tx.promotion.update(usedCount + 1) & tx.promotionUsage.upsert()
+    end
+    API -> DB: COMMIT
+    deactivate DB
+    API --> VNP: { RspCode: "00", Message: "Confirm Success" }
+else [Đơn còn hạn & Thanh toán thất bại]
+    API -> DB: BEGIN TRANSACTION
+    activate DB
+    API -> DB: tx.payment.update(FAILED / CANCELLED)
+    API -> DB: tx.order.update(PAYMENT_FAILED) *(Chưa hoàn kho)*
+    API -> DB: COMMIT
+    deactivate DB
+    API --> VNP: { RspCode: "00", Message: "Confirm Success" }
+else [Đơn đã hết hạn TTL khi nhận IPN]
+    API -> DB: BEGIN TRANSACTION
+    activate DB
+    API -> DB: tx.order.update(CANCELLED)
+    API -> API: restoreOrderStock(tx, orderId)
+    API -> DB: tx.payment.update(status) & COMMIT
+    deactivate DB
+    API --> VNP: { RspCode: "00", Message: "Confirm Success" }
+end
+
+deactivate API
+deactivate VNP
+
+== GIAI ĐOẠN 4: RETURN URL & XÁC NHẬN KẾT QUẢ ==
+
+VNP -> API: Redirect trình duyệt về GET /payments/vnpay/return
+activate API
+API -> API: PaymentsController.handleVnpayReturn()\n-> getReturnDestination()
+API -> DB: prisma.payment.findUnique(vnp_TxnRef)
+activate DB
+DB --> API: orderId
+deactivate DB
+API --> C: HTTP 302 Redirect -> /checkout/confirmation?orderId=...
+deactivate API
+
+C -> UI: Mở trang xác nhận đơn (OrderConfirmationContent)
+activate UI
+loop Polling mỗi 4s nếu status == PENDING
+    UI -> API: getOrderById(orderId) [GET /orders/:id]
+    activate API
+    API -> API: OrdersController.findById() -> OrdersService.findById()
+    API -> DB: prisma.order.findUnique(id)
+    activate DB
+    DB --> API: Order Details (Status, Payments)
+    deactivate DB
+    API --> UI: 200 OK (Order Details)
+    deactivate API
+end
+
+alt [Order Status = PAID]
+    UI --> C: Hiển thị thanh toán thành công
+else [Order Status = PAYMENT_FAILED]
+    UI --> C: Hiển thị thanh toán lỗi & nút thử lại
+else [Order Status = PENDING]
+    UI --> C: Hiển thị đang chờ xác nhận
+end
+deactivate UI
+
+@enduml

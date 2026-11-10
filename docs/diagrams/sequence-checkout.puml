@@ -1,0 +1,347 @@
+@startuml
+
+title BrewLite - Sequence Diagram: Dat hang va thanh toan VNPay
+
+autonumber
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+actor "Customer" as C
+participant "Next.js UI" as UI
+participant "NestJS API" as API
+database "Database" as DB
+participant "Payment Service" as VNP
+
+== GIAI DOAN 1: GUI YEU CAU DAT HANG ==
+
+C -> UI: Nhan nut "Tien hanh thanh toan"
+activate UI
+
+UI -> UI: handleCreateOrder()
+UI -> UI: toCreateOrderPayload(items)
+
+UI -> API: createOrder(payload, userId, idempotencyKey)\nPOST /orders
+activate API
+
+API -> API: ValidationPipe (validate CreateOrderDto)
+API -> API: OrdersController.create()
+API -> API: OrdersController.getUserId() -> jwtService.verify(token)
+API -> API: OrdersService.create(userId, dto, idempotencyKey)
+
+API -> DB: prisma.payment.findUnique(idempotencyKey)
+activate DB
+DB --> API: existingPayment / null
+deactivate DB
+
+alt [idempotencyKey da duoc xu ly]
+
+    API -> API: assertOrderIdempotencyOwner()
+    API --> UI: serializeOrder(existingPayment.order) [201 Created]
+
+else [Request moi]
+
+    == GIAI DOAN 2: KIEM TRA GIA, TON KHO VA TAO DON ==
+
+    API -> DB: Promise.all([user.findFirst, product.findMany,\nproductSize.findMany, productTopping.findMany, productRecipe.findMany])
+    activate DB
+    DB --> API: User, Product, Price, Size, Topping, Recipe
+    deactivate DB
+
+    API -> API: Tinh gia Server-side (unitPrice, lineTotal, subtotal)\n& Tong hop nhu cau nguyen lieu (ingredientDemandMap)
+
+    alt [User/San pham hop le va du ton kho]
+
+        group prisma.$transaction() - executeOrderCreation(tx)
+
+            API -> DB: BEGIN TRANSACTION
+            activate DB
+
+            API -> DB: tx.ingredient.updateMany()\nwhere(id, version, stockQuantity >= reqQty)
+            API -> DB: tx.product.updateMany()
+            API -> DB: tx.topping.updateMany()
+
+            alt [Optimistic Lock thanh cong (count > 0)]
+
+                API -> DB: tx.order.create(status: PENDING,\norderItems: { create }, statusHistory: { create })
+                API -> DB: tx.payment.create(BREWLITE, PENDING)
+                API -> DB: COMMIT
+                DB --> API: Created Order
+
+            else [Version conflict / count == 0]
+
+                API -> DB: ROLLBACK
+                DB --> API: ConflictException
+
+            end
+
+            deactivate DB
+
+        end
+
+        alt [Transaction COMMIT]
+
+            API -> API: serializeOrder(order)
+            API --> UI: 201 Created (CreatedOrderResponse)
+
+        else [Transaction ROLLBACK]
+
+            API --> UI: 409 Conflict
+
+        end
+
+    else [User/San pham khong hop le / Khong du ton kho]
+
+        API --> UI: 400 Bad Request
+
+    end
+
+end
+
+deactivate API
+
+alt [Create Order Success]
+
+    UI -> UI: clearCart()
+    UI -> UI: router.push("/checkout?orderId=...")
+    UI --> C: Hien thi trang /checkout
+
+else [Create Order Failed]
+
+    UI -> UI: setErrorMessage(msg)
+    UI --> C: Hien thi thong bao loi
+
+end
+
+deactivate UI
+
+== GIAI DOAN 3: KHOI TAO THANH TOAN VNPAY ==
+
+C -> UI: Nhan nut "Thanh toan qua VNPay"
+activate UI
+
+UI -> UI: submitVnpayPayment()
+
+UI -> API: createVnpayPayment(orderId, idempotencyKey)\nPOST /payments/orders/:id/vnpay
+activate API
+
+API -> API: JwtAuthGuard.canActivate()
+API -> API: JwtStrategy.validate(payload)
+
+API -> DB: prisma.user.findUnique(payload.sub)
+activate DB
+DB --> API: User
+deactivate DB
+
+API -> API: PaymentsController.createVnpayPayment()
+API -> API: PaymentsService.createVnpayPayment()
+API -> API: PaymentsService.getVnpayConfig()
+
+API -> DB: prisma.$transaction() - SELECT FOR UPDATE\n& tx.order.findUnique(orderId)
+activate DB
+
+opt [Chua co expiresAt]
+    API -> DB: tx.order.update(expiresAt)
+end
+
+API -> DB: tx.payment.findUnique(idempotencyKey)\n& tx.payment.findFirst(VNPAY, PENDING)
+
+alt [Chua co Payment Attempt PENDING]
+
+    API -> DB: tx.payment.create(VNPAY, PENDING)
+    DB --> API: New Payment Record
+
+else [Payment Attempt PENDING da ton tai]
+
+    DB --> API: Existing Payment Record
+
+end
+
+deactivate DB
+
+API -> API: vietnamTimestamp()
+API -> API: orderedQuery()
+API -> API: createHmac("sha512", hashSecret)
+
+API --> UI: 200 OK (paymentUrl, orderId, paymentStatus)
+deactivate API
+
+UI -> UI: window.location.assign(paymentUrl)
+UI --> C: Chuyen huong trinh duyet sang VNPay
+deactivate UI
+
+C -> VNP: Nhap the test NCB & xac nhan OTP
+activate VNP
+
+== GIAI DOAN 4: XU LY IPN VNPAY ==
+
+VNP -> API: GET /payments/vnpay/ipn
+activate API
+
+API -> API: PaymentsController.handleVnpayIpn()
+API -> API: PaymentsService.handleIpn()
+API -> API: normalizedQuery() & verifySignature(params, hashSecret)
+
+alt [Invalid Signature / Merchant / Data]
+
+    API --> VNP: RspCode 97 / 99
+
+else [Valid Signature]
+
+    API -> DB: prisma.payment.findUnique(vnp_TxnRef)
+    activate DB
+    DB --> API: Payment Record
+    deactivate DB
+
+    alt [Invalid Order / Amount]
+
+        API --> VNP: RspCode 01 / 04
+
+    else [IPN da xu ly truoc do]
+
+        API --> VNP: RspCode 00 (neu SUCCESS trung TransactionNo) / RspCode 02
+
+    else [Payment Success (00/00) va Order con han]
+
+        group prisma.$transaction() - Payment Success
+
+            API -> DB: BEGIN TRANSACTION & SELECT FOR UPDATE
+            activate DB
+
+            API -> DB: tx.payment.update(SUCCESS)
+            API -> DB: tx.order.update(PAID, pointsEarned=100)
+            API -> DB: tx.orderStatusHistory.create(PAID)
+            API -> DB: tx.user.update(loyaltyPoints + 100)
+
+            opt [Co ma khuyen mai]
+
+                API -> DB: tx.promotion.update(usedCount + 1)
+                API -> DB: tx.promotionUsage.upsert()
+
+            end
+
+            API -> DB: COMMIT
+            DB --> API: Payment Updated
+            deactivate DB
+
+        end
+
+        API --> VNP: RspCode 00 (Confirm Success)
+
+    else [Payment Failed / Cancelled va Order con han]
+
+        group prisma.$transaction() - Payment Failed
+
+            API -> DB: BEGIN TRANSACTION & SELECT FOR UPDATE
+            activate DB
+
+            API -> DB: tx.payment.update(FAILED / CANCELLED)
+            API -> DB: tx.order.update(PAYMENT_FAILED)
+            API -> DB: tx.orderStatusHistory.create(PAYMENT_FAILED)
+
+            note right of DB
+                Chua hoan ton kho.
+                Cho phep thu lai thanh toan.
+            end note
+
+            API -> DB: COMMIT
+            DB --> API: Payment Updated
+            deactivate DB
+
+        end
+
+        API --> VNP: RspCode 00 (Confirm Success)
+
+    else [Order het han TTL]
+
+        group prisma.$transaction() - Expire Order
+
+            API -> DB: BEGIN TRANSACTION & SELECT FOR UPDATE
+            activate DB
+
+            API -> DB: tx.order.update(CANCELLED)
+            API -> DB: tx.orderStatusHistory.create(CANCELLED)
+            API -> API: restoreOrderStock(tx, orderId)
+            API -> DB: tx.payment.update(status)
+            API -> DB: COMMIT
+
+            DB --> API: Order Expired
+            deactivate DB
+
+        end
+
+        API --> VNP: RspCode 00 (Confirm Success)
+
+    end
+
+end
+
+deactivate API
+deactivate VNP
+
+== GIAI DOAN 5: RETURN URL VA XAC NHAN KET QUA ==
+
+note over C,VNP
+    IPN va Return URL la hai luong doc lap.
+    Return URL co the den truoc IPN.
+end note
+
+VNP -> API: Dieu huong trinh duyet ve GET /payments/vnpay/return
+activate API
+
+API -> API: PaymentsController.handleVnpayReturn()
+API -> API: PaymentsService.getReturnDestination(query)
+
+API -> DB: prisma.payment.findUnique(vnp_TxnRef)
+activate DB
+DB --> API: Payment Record / orderId
+deactivate DB
+
+API --> C: HTTP 302 Redirect\n/checkout/confirmation?orderId=...&paymentReturn=vnpay
+deactivate API
+
+C -> UI: Mo trang /checkout/confirmation (OrderConfirmationContent)
+activate UI
+
+loop [Polling moi 4s khi orderStatus == PENDING]
+
+    UI -> API: getOrderById(orderId)\nGET /orders/:id
+    activate API
+
+    API -> API: OrdersController.findById()
+    API -> API: OrdersService.findById()
+
+    API -> DB: prisma.order.findUnique(orderId)
+    activate DB
+    DB --> API: Order Details
+    deactivate DB
+
+    API --> UI: 200 OK (CreatedOrderResponse)
+    deactivate API
+
+    UI -> UI: setOrder(updated)
+
+end
+
+alt [Order Status = PAID]
+
+    UI --> C: Hien thi "Thanh toan thanh cong"
+
+else [Order Status = PAYMENT_FAILED]
+
+    UI --> C: Hien thi "Thanh toan khong thanh cong" & link xem don (/orders/:id)
+
+else [Order Status = CANCELLED]
+
+    UI --> C: Hien thi "Don hang da huy"
+
+else [Order Status = PENDING]
+
+    UI --> C: Hien thi "Dang xac nhan thanh toan"
+
+end
+
+deactivate UI
+
+@enduml

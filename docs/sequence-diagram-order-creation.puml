@@ -1,0 +1,106 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+autonumber 1 1 "<b>[00]</b>"
+
+actor "Customer" as C
+participant "Next.js UI" as UI
+participant "NestJS API" as API
+database "Database\n(PostgreSQL / Prisma)" as DB
+
+title SƠ ĐỒ TUẦN TỰ: TẠO ĐƠN HÀNG, VALIDATE, XÁC THỰC JWT, TÍNH GIÁ & TRỪ KHO\n(Customer -> Next.js UI -> NestJS API -> Database)
+
+== BƯỚC 1: GỬI REQUEST TẠO ĐƠN HÀNG ==
+
+C -> UI: Nhấn nút "Đặt hàng" tại trang Giỏ hàng
+activate UI
+UI -> UI: handleCreateOrder()\n-> toCreateOrderPayload(items)\n-> getAuthHeaders()
+
+UI -> API: createOrder(payload, userId, idempotencyKey)\n[HTTP POST /orders]\nHeaders: Authorization: Bearer <token>, Idempotency-Key: <uuid>\nBody: CreateOrderDto { items, note }
+activate API
+
+== BƯỚC 2: VALIDATE PAYLOAD & XÁC THỰC JWT ==
+
+API -> API: ValidationPipe.transform(CreateOrderDto)\n- @ArrayMinSize(1), @ArrayMaxSize(50) cho items\n- @Matches(/^\\d{1,18}$/) cho productId, productSizeId\n- @Min(1), @Max(99) cho quantity\n- @IsIn([0, 30, 50, 70, 100]) cho sugarPercent, icePercent\n- @ArrayMaxSize(10) cho toppings
+
+alt DTO vi phạm quy tắc validate
+    API --> UI: throw BadRequestException(validationErrors) [HTTP 400]
+    UI --> C: Hiển thị thông báo dữ liệu không hợp lệ
+else DTO hợp lệ
+    API -> API: OrdersController.create(authHeader, userIdHeader, idempotencyKey, dto)
+    API -> API: OrdersController.getUserId(authHeader, userIdHeader)\n-> jwtService.verify(token) -> trích xuất payload.sub (userId)
+
+    alt Không có JWT hợp lệ (và không có x-user-id hợp lệ)
+        API --> UI: throw UnauthorizedException() [HTTP 401]
+        UI --> C: Điều hướng về trang /login
+    else Xác thực thành công
+        API -> API: OrdersService.create(userId, dto, idempotencyKey)
+
+        == BƯỚC 3: KIỂM TRA IDEMPOTENCY KEY ==
+
+        API -> DB: prisma.payment.findUnique({ where: { idempotencyKey }, include: { order } })
+        activate DB
+        DB --> API: existingPayment / null
+        deactivate DB
+
+        alt Request trùng idempotencyKey (existingPayment?.order tồn tại)
+            API -> API: assertOrderIdempotencyOwner(existingPayment, userId, fingerprint)
+            API --> UI: CreatedOrderResponse (serializeOrder(existingPayment.order)) [HTTP 201]
+            UI -> UI: clearCart() & router.push("/checkout?orderId=" + order.id)
+            UI --> C: Chuyển sang trang Thanh toán (/checkout)
+        else Request mới
+            == BƯỚC 4: KIỂM TRA USER, GIÁ & TỒN KHO PHÍA SERVER ==
+
+            API -> DB: Promise.all([\n  prisma.user.findFirst({ where: { id: userId, isActive: true } }),\n  prisma.product.findMany({ where: { id: in, isActive: true } }),\n  prisma.productSize.findMany({ where: { id: in, isActive: true } }),\n  prisma.productTopping.findMany({ where: { toppingId: in } }),\n  prisma.productRecipe.findMany({ where: { productId: in } })\n])
+            activate DB
+            DB --> API: Dữ liệu thực thể gốc (User, Product, Size, Topping, Recipe)
+            deactivate DB
+
+            API -> API: Kiểm tra user tồn tại, quan hệ productSize & productTopping
+            API -> API: Tính toán giá độc lập phía Server:\n- toppingTotal = sum(t.price * t.quantity)\n- unitPrice = product.price + size.extraPrice + toppingTotal\n- lineTotal = unitPrice * item.quantity\n- subtotal = sum(lineTotal), total = subtotal
+
+            API -> API: Tổng hợp nhu cầu nguyên liệu (ingredientDemandMap)\n& Kiểm tra sơ bộ: stockQuantity >= requiredAmount
+
+            alt Không đủ tồn kho hoặc User/Sản phẩm không hợp lệ
+                API --> UI: throw BadRequestException("Không đủ tồn kho / dữ liệu không hợp lệ") [HTTP 400]
+                UI --> C: Báo lỗi hết món hoặc dữ liệu không hợp lệ
+            else Dữ liệu & Tồn kho sơ bộ đáp ứng đủ
+                == BƯỚC 5: TRANSACTION TRỪ KHO OPTIMISTIC LOCK & TẠO ĐƠN ==
+                API -> API: OrdersService.executeOrderCreation(tx)
+                API -> API: Sắp xếp ingredientDemandMap theo ID tăng dần (chống Deadlock)
+
+                API -> DB: BEGIN TRANSACTION ($transaction)
+                activate DB
+                API -> DB: tx.ingredient.updateMany({\n  where: { id, version, stockQuantity: { gte: reqQty } },\n  data: { stockQuantity: { decrement: reqQty }, version: { increment: 1 } }\n})
+                API -> DB: tx.product.updateMany(...) & tx.topping.updateMany(...)
+
+                alt Xung đột phiên bản đồng thời (updateResult.count == 0)
+                    API -> DB: ROLLBACK
+                    DB --> API: updateResult.count == 0
+                    API --> UI: throw ConflictException("Xung đột tồn kho đồng thời") [HTTP 409]
+                    UI --> C: Hiển thị cảnh báo xung đột đặt hàng
+                else Trừ kho thành công
+                    API -> DB: tx.order.create({\n  data: { orderCode, userId, status: "PENDING", subtotal, total, expiresAt, orderItems, statusHistory }\n})
+                    opt Nếu có idempotencyKey
+                        API -> DB: tx.payment.create({\n  data: { orderId, idempotencyKey, amount: subtotal, provider: "BREWLITE", status: "PENDING" }\n})
+                    end
+                    API -> DB: COMMIT
+                    DB --> API: Bản ghi Order hoàn chỉnh
+                    API -> API: OrdersService.serializeOrder(order)
+                    API --> UI: CreatedOrderResponse [HTTP 201 Created]
+                    UI -> UI: clearCart() & router.push("/checkout?orderId=" + order.id)
+                    UI --> C: Điều hướng sang trang Thanh toán (/checkout)
+                end
+                deactivate DB
+            end
+        end
+    end
+end
+
+deactivate API
+deactivate UI
+
+@enduml

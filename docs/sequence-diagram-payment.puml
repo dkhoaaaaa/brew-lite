@@ -1,0 +1,68 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+autonumber 1 1 "<b>[00]</b>"
+
+actor "Customer" as C
+participant "Next.js UI" as UI
+participant "NestJS API" as API
+database "Database\n(PostgreSQL / Prisma)" as DB
+participant "Payment Service\n(VNPay Sandbox)" as VNP
+
+title Luồng Khởi tạo thanh toán VNPay\n(Customer -> Next.js UI -> NestJS API -> Database -> Payment Service)
+
+C -> UI: Bấm nút "Thanh toán qua VNPay Sandbox"
+activate UI
+
+UI -> UI: submitVnpayPayment()
+UI -> API: createVnpayPayment(orderId, idempotencyKey)\n[POST /payments/orders/:id/vnpay]
+activate API
+
+API -> API: JwtAuthGuard.canActivate() -> JwtStrategy.validate(payload)
+API -> DB: prisma.user.findUnique({ where: { id: BigInt(payload.sub) } })
+activate DB
+DB --> API: User { id, email, isActive: true }
+deactivate DB
+
+API -> API: PaymentsController.createVnpayPayment(id, user, idempotencyKey, clientIp)
+API -> API: PaymentsService.createVnpayPayment(orderId, userId, idempotencyKey, clientIp)
+API -> API: PaymentsService.getVnpayConfig()
+
+API -> DB: BEGIN TRANSACTION ($transaction)
+activate DB
+API -> DB: tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`
+API -> DB: tx.order.findUnique({ where: { id: orderId } })
+
+opt Đơn hàng chưa có expiresAt
+    API -> DB: tx.order.update({ data: { expiresAt: now + TTL } })
+end
+
+API -> DB: tx.payment.findUnique({ where: { idempotencyKey } })\n& tx.payment.findFirst({ where: { orderId, provider: "VNPAY", status: "PENDING" } })
+
+alt Chưa có attempt PENDING
+    API -> DB: tx.payment.create({\n  orderId, idempotencyKey, amount: order.total,\n  method: "VNPAY", provider: "VNPAY", status: "PENDING"\n})
+end
+
+DB --> API: COMMIT -> Payment record (status: "PENDING")
+deactivate DB
+
+API -> API: PaymentsService.vietnamTimestamp(now)
+API -> API: PaymentsService.orderedQuery(params)
+API -> API: createHmac("sha512", config.hashSecret).update(signData).digest("hex")
+API --> UI: Trả về { paymentUrl, orderId, paymentStatus } (HTTP 200 OK)
+deactivate API
+
+UI -> UI: window.location.assign(payment.paymentUrl)
+UI --> C: Điều hướng trình duyệt sang VNPay
+deactivate UI
+
+C -> VNP: Truy cập Cổng thanh toán VNPay Sandbox\n[GET /paymentv2/vpcpay.html?vnp_Amount=...&vnp_SecureHash=...]
+activate VNP
+
+VNP --> C: Hiển thị giao diện nhập thẻ thanh toán VNPay (NCB / OTP)
+deactivate VNP
+
+@enduml

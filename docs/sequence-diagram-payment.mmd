@@ -1,0 +1,102 @@
+sequenceDiagram
+    autonumber
+    actor C as Customer
+    participant UI as Next.js UI
+    participant API as NestJS API
+    participant DB as Database (Prisma/PostgreSQL)
+    participant VNP as Payment Service (VNPay)
+
+    rect rgb(245, 247, 250)
+    Note over C, VNP: GIAI ĐOẠN 1: Đặt hàng, Kiểm tra giá & Trừ tồn kho lạc quan
+    C->>UI: Nhấn "Đặt hàng" tại trang Giỏ hàng
+    UI->>API: POST /orders (Header: Bearer Token, Idempotency-Key)
+    API->>API: JwtAuthGuard xác thực token & giải mã userId
+    API->>API: ValidationPipe validate CreateOrderDto
+    API->>DB: Query User(active), Products, Sizes, Toppings, Recipes
+    DB-->>API: Dữ liệu thực thể gốc
+    API->>API: Tính giá độc lập phía Server
+    API->>API: Tổng hợp nhu cầu nguyên liệu (ingredientDemandMap)
+    alt Nguyên liệu kho không đủ
+        API-->>UI: 400 Bad Request ("Nguyên liệu không đủ")
+        UI-->>C: Báo lỗi hết hàng
+    else Nguyên liệu đủ, tiến hành trừ kho
+        API->>DB: Trừ kho với WHERE version = version AND stockQuantity >= reqQty
+        alt Xung đột phiên bản đồng thời (Optimistic Lock Fail)
+            DB-->>API: updateResult.count == 0
+            API-->>UI: 409 Conflict ("Xung đột tồn kho đồng thời")
+            UI-->>C: Hiển thị thông báo xung đột
+        else Trừ kho thành công
+            DB-->>API: Cập nhật stockQuantity & tăng version
+            API->>DB: tx.order.create(status: PENDING, subtotal, total, expiresAt: now + 5m)
+            DB-->>API: Trả về Order mới
+            API-->>UI: 201 Created (CreatedOrderResponse)
+            UI->>UI: Chuyển hướng sang /checkout?orderId=...
+        end
+    end
+    end
+
+    rect rgb(254, 249, 231)
+    Note over C, VNP: GIAI ĐOẠN 2: Khởi tạo thanh toán VNPay & Ký số HMAC-SHA512
+    C->>UI: Nhấn "Thanh toán qua VNPay Sandbox"
+    UI->>UI: submitVnpayPayment(): Khóa nút bấm, sinh idempotencyKey
+    UI->>API: POST /payments/orders/:id/vnpay (Header: Bearer, Idempotency-Key)
+    API->>API: PaymentsController: kiểm tra orderId & idempotencyKey
+    API->>DB: tx.$queryRaw SELECT id FROM orders FOR UPDATE
+    API->>DB: tx.order.findUnique(where: id)
+    API->>DB: tx.payment.create(orderId, amount, provider: VNPAY, status: PENDING)
+    DB-->>API: Bản ghi Payment (status: PENDING)
+    API->>API: getVnpayConfig() & vietnamTimestamp(now)
+    API->>API: orderedQuery(params) & Ký băm HMAC-SHA512 ra vnp_SecureHash
+    API-->>UI: 200 OK { paymentUrl, orderId, paymentStatus }
+    UI->>C: window.location.assign(paymentUrl)
+    C->>VNP: Điều hướng đến cổng thanh toán VNPay Sandbox
+    end
+
+    rect rgb(240, 244, 248)
+    Note over C, VNP: GIAI ĐOẠN 3: Khách hàng thanh toán trên cổng VNPay
+    C->>VNP: Nhập thông tin thẻ thử nghiệm NCB & OTP 123456
+    VNP->>VNP: Xử lý giao dịch & sinh mã giao dịch (vnp_TransactionNo)
+    end
+
+    rect rgb(237, 247, 237)
+    Note over C, VNP: GIAI ĐOẠN 4: Đối soát kết quả giao dịch ngầm qua Webhook IPN
+    VNP->>API: GET /payments/vnpay/ipn (Kèm query đối soát)
+    API->>API: PaymentsService.handleIpn()
+    API->>API: verifySignature(): Đối soát checksum HMAC-SHA512
+    API->>DB: tx.$queryRaw FOR UPDATE & tx.payment.findUnique()
+    alt Thanh toán thành công (vnp_ResponseCode == "00")
+        API->>DB: tx.payment.update(status: SUCCESS, transactionCode: vnp_TransactionNo)
+        API->>DB: tx.order.update(status: PAID, pointsEarned: 100)
+        API->>DB: tx.orderStatusHistory.create(newStatus: PAID)
+        API->>DB: tx.user.update(loyaltyPoints: increment 100)
+        opt Đơn hàng có mã giảm giá
+            API->>DB: tx.promotion.update(usedCount + 1) & tx.promotionUsage.upsert()
+        end
+        DB-->>API: Commit Transaction thành công
+        API-->>VNP: 200 OK { RspCode: "00", Message: "Confirm Success" }
+    else Thanh toán thất bại hoặc Quá hạn TTL
+        API->>DB: tx.payment.update(status: FAILED / CANCELLED)
+        opt Nếu đơn hàng đã quá hạn TTL (expiresAt <= now)
+            API->>DB: tx.order.update(status: CANCELLED)
+            API->>DB: restoreOrderStock(): Hoàn trả số lượng nguyên liệu tồn kho
+        end
+        API-->>VNP: 200 OK { RspCode: "00", Message: "Confirm Success" }
+    end
+    end
+
+    rect rgb(254, 243, 242)
+    Note over C, VNP: GIAI ĐOẠN 5: Điều hướng Khách hàng quay về Frontend & Xác nhận đơn
+    VNP->>API: Điều hướng Customer về GET /payments/vnpay/return?vnp_TxnRef=...
+    API->>API: PaymentsController.handleVnpayReturn() -> getReturnDestination()
+    API->>DB: prisma.payment.findUnique(where: id == vnp_TxnRef)
+    DB-->>API: Trả về orderId
+    API-->>C: HTTP 302 Redirect về URL: /checkout/confirmation?orderId=...
+    C->>UI: Trình duyệt mở trang Xác nhận đơn hàng (/checkout/confirmation)
+    loop Polling mỗi 4 giây (khi trạng thái vẫn là PENDING)
+        UI->>API: getOrderById(): GET /orders/:id
+        API->>DB: prisma.order.findUnique(include: payments, items, statusHistory)
+        DB-->>API: Trả về dữ liệu đơn hàng (status: PAID)
+        API-->>UI: 200 OK (Chi tiết đơn hàng đã thanh toán)
+    end
+    UI-->>C: Hiển thị giao diện "Thanh toán thành công" & Mã đơn hàng
+    end
