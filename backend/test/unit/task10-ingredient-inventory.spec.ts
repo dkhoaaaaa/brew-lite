@@ -1,10 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
 import {
-  BadRequestException,
-  ConflictException,
+  BadRequestException
 } from "@nestjs/common";
-import { OrdersService } from "../src/modules/orders/orders.service.js";
-import type { CreateOrderDto } from "../src/modules/orders/dto/create-order.dto.js";
+import { describe, expect, it, vi } from "vitest";
+import type { CreateOrderDto } from "../../src/modules/orders/dto/create-order.dto.js";
+import { OrdersService } from "../../src/modules/orders/orders.service.js";
 
 const money = (value: number) => ({ toNumber: () => value, toString: () => value.toString() });
 

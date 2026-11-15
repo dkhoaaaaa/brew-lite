@@ -5,17 +5,16 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatPrice } from "../../../lib/money";
 import { getOrderById, type CreatedOrderResponse } from "../../../lib/orders-api";
+import { LoadingState } from "../../../components/LoadingState";
+import { ErrorState } from "../../../components/ErrorState";
+import { EmptyState } from "../../../components/EmptyState";
 
 export default function OrderConfirmationPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-10 px-4 sm:px-6">
-          <div className="max-w-4xl mx-auto text-center">
-            <p className="text-sm uppercase tracking-wider text-[#8C7E73]" role="status">
-              Đang tải thông tin xác nhận đơn hàng...
-            </p>
-          </div>
+        <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-10 px-4 sm:px-6 flex items-center justify-center">
+          <LoadingState message="Đang tải thông tin xác nhận đơn hàng..." />
         </main>
       }
     >
@@ -87,32 +86,20 @@ function OrderConfirmationContent() {
   if (!orderId) {
     return (
       <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-8 sm:py-12 px-4 sm:px-6 flex items-center justify-center">
-        <div className="max-w-md w-full bg-white border border-[#E5DFD7] rounded-2xl p-5 sm:p-8 text-center shadow-sm">
-          <h2 className="text-lg sm:text-xl font-bold text-[#30251D] mb-2 font-heading">
-            Không tìm thấy mã đơn hàng
-          </h2>
-          <p className="text-xs sm:text-sm text-[#6F6258] mb-6">
-            Trở về từ VNPay không đủ để xác nhận thanh toán nếu không có đơn hàng hợp lệ.
-          </p>
-          <Link
-            className="inline-flex items-center justify-center min-h-[44px] w-full px-5 py-2.5 bg-[#38291E] hover:bg-[#241A13] text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-xs"
-            href="/orders"
-          >
-            Đơn hàng của tôi
-          </Link>
-        </div>
+        <EmptyState
+          title="Không tìm thấy mã đơn hàng"
+          description="Trở về từ cổng thanh toán không đủ để xác nhận nếu không có đơn hàng hợp lệ."
+          actionLabel="Đơn hàng của tôi"
+          actionHref="/orders"
+        />
       </main>
     );
   }
 
   if (!loaded) {
     return (
-      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-10 px-4 sm:px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <p className="text-sm uppercase tracking-wider text-[#8C7E73]" role="status">
-            Đang tải thông tin đơn hàng...
-          </p>
-        </div>
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-10 px-4 sm:px-6 flex items-center justify-center">
+        <LoadingState message="Đang tải thông tin đơn hàng..." />
       </main>
     );
   }
@@ -120,33 +107,12 @@ function OrderConfirmationContent() {
   if (error || !order) {
     return (
       <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-8 sm:py-12 px-4 sm:px-6 flex items-center justify-center">
-        <div className="max-w-md w-full bg-white border border-[#E5DFD7] rounded-2xl p-5 sm:p-8 text-center shadow-sm">
-          <div className="w-12 h-12 rounded-full bg-[#F5EFE6] text-[#76513B] flex items-center justify-center mx-auto mb-4 text-xl font-bold">
-            !
-          </div>
-          <h2 className="text-xl font-bold text-[#30251D] mb-2 font-heading">
-            Không tìm thấy thông tin đơn hàng
-          </h2>
-          <p className="text-sm text-[#6F6258] mb-6">
-            {error ?? "Phiên thanh toán đã kết thúc hoặc không tồn tại đơn hàng tương ứng."}
-          </p>
-          <div className="flex flex-col gap-3">
-            <Link
-              href="/orders"
-              className="w-full py-3 px-4 rounded-lg bg-[#38291E] hover:bg-[#241A13] !text-white font-medium text-sm transition-colors text-center shadow-xs"
-              style={{ color: "#ffffff" }}
-            >
-              <span className="text-white font-medium">Đơn hàng của tôi</span>
-            </Link>
-            <Link
-              href="/menu"
-              className="w-full py-3 px-4 rounded-lg bg-white border border-[#DED6CB] !text-[#38291E] hover:bg-[#F7F5F1] font-medium text-sm transition-colors text-center"
-              style={{ color: "#38291E" }}
-            >
-              <span className="text-[#38291E] font-medium">Xem thực đơn</span>
-            </Link>
-          </div>
-        </div>
+        <ErrorState
+          title="Không tìm thấy thông tin đơn hàng"
+          message={error ?? "Phiên thanh toán đã kết thúc hoặc không tồn tại đơn hàng tương ứng."}
+          secondaryActionLabel="Đơn hàng của tôi"
+          secondaryActionHref="/orders"
+        />
       </main>
     );
   }

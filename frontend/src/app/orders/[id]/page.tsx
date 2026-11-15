@@ -6,6 +6,9 @@ import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "../../../lib/auth";
 import { formatPrice } from "../../../lib/money";
 import { cancelOrder, getOrderById, type CreatedOrderResponse } from "../../../lib/orders-api";
+import { LoadingState } from "../../../components/LoadingState";
+import { ErrorState } from "../../../components/ErrorState";
+import { EmptyState } from "../../../components/EmptyState";
 
 export default function OrderDetailsPage() {
   return (
@@ -13,7 +16,7 @@ export default function OrderDetailsPage() {
       fallback={
         <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 lg:px-8 font-sans text-[#30251D]">
           <div className="max-w-4xl mx-auto bg-white border border-[#DED6CB] rounded-2xl p-12 text-center shadow-xs">
-            <p className="text-sm text-[#6F6258] animate-pulse">Đang tải chi tiết đơn hàng...</p>
+            <LoadingState message="Đang tải chi tiết đơn hàng..." />
           </div>
         </main>
       }
@@ -131,6 +134,13 @@ function OrderDetailsContent() {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [loadedOrderId, setLoadedOrderId] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const handleRetry = () => {
+    setLoadedOrderId(null);
+    setError(null);
+    setRetryCount((prev) => prev + 1);
+  };
 
   const handleCancel = async () => {
     if (!order || !window.confirm("Bạn có chắc chắn muốn hủy đơn hàng này không?")) return;
@@ -165,7 +175,7 @@ function OrderDetailsContent() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, retryCount]);
 
   // Polling tự động làm mới trạng thái khi đơn hàng đang trong tiến trình xử lý
   const orderStatus = order?.status;
@@ -210,28 +220,39 @@ function OrderDetailsContent() {
 
   if (loadedOrderId !== id) {
     return (
-      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 lg:px-8 font-sans text-[#30251D]">
-        <div className="max-w-4xl mx-auto bg-white border border-[#DED6CB] rounded-2xl p-12 text-center shadow-sm">
-          <p className="text-sm text-[#6F6258] animate-pulse">Đang tải chi tiết đơn hàng...</p>
-        </div>
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 lg:px-8 font-sans text-[#30251D] flex items-center justify-center">
+        <LoadingState message="Đang tải chi tiết đơn hàng..." />
       </main>
     );
   }
 
   if (error || !order) {
+    const isNotFound =
+      error?.includes("404") ||
+      error?.toLowerCase().includes("không tìm thấy") ||
+      !order;
+
     return (
-      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 lg:px-8 font-sans text-[#30251D]">
-        <div className="max-w-md mx-auto bg-white border border-[#DED6CB] rounded-2xl p-8 sm:p-10 text-center shadow-sm">
-          <h1 className="text-xl font-bold text-[#30251D] mb-3 font-heading">Không tìm thấy đơn hàng</h1>
-          <p className="text-sm text-[#6F6258] mb-6">{error ?? "Đơn hàng không tồn tại hoặc đã hết hạn."}</p>
-          <Link
-            className="inline-flex items-center justify-center bg-[#38291E] hover:bg-[#241A13] !text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-xs"
-            href="/orders"
-            style={{ color: "#ffffff" }}
-          >
-            <span className="text-white font-semibold">Quay lại danh sách đơn hàng</span>
-          </Link>
-        </div>
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 lg:px-8 font-sans text-[#30251D] flex items-center justify-center">
+        {isNotFound ? (
+          <EmptyState
+            title="Không tìm thấy đơn hàng"
+            description={
+              error ??
+              "Đơn hàng không tồn tại, đã hết hạn hoặc bạn không có quyền truy cập."
+            }
+            actionLabel="Quay lại danh sách đơn hàng"
+            actionHref="/orders"
+          />
+        ) : (
+          <ErrorState
+            title="Không thể tải chi tiết đơn hàng"
+            message={error ?? "Đã xảy ra sự cố khi kết nối tới máy chủ."}
+            onRetry={handleRetry}
+            secondaryActionLabel="Quay lại danh sách đơn hàng"
+            secondaryActionHref="/orders"
+          />
+        )}
       </main>
     );
   }

@@ -1,6 +1,6 @@
+import { BadRequestException } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
-import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { LoyaltyService, REWARD_TIERS } from "../src/modules/loyalty/loyalty.service.js";
+import { LoyaltyService } from "../../src/modules/loyalty/loyalty.service.js";
 
 function buildPrisma(overrides: Record<string, unknown> = {}) {
   return {

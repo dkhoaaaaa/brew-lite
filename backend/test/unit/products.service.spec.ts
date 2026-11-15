@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ProductsService } from "../src/modules/products/products.service.js";
+import { ProductsService } from "../../src/modules/products/products.service.js";
 
 const money = (value: number) => ({ toNumber: () => value, toString: () => value.toString() });
 

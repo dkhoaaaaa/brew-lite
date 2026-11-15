@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Toast } from "../../components/Toast";
+import { LoadingState } from "../../components/LoadingState";
+import { EmptyState } from "../../components/EmptyState";
 import { formatErrorMessage } from "../../lib/api-client";
 import { getProfile, updateProfile, useAuth } from "../../lib/auth";
 import { getMyOrders, type CreatedOrderResponse } from "../../lib/orders-api";
@@ -283,8 +285,16 @@ export default function ProfilePage() {
     }
   };
 
+  if (loadingProfile) {
+    return (
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] flex items-center justify-center">
+        <LoadingState message="Đang tải thông tin tài khoản..." />
+      </main>
+    );
+  }
+
   // Màn hình khi chưa đăng nhập
-  if (!isAuthenticated && !loadingProfile) {
+  if (!isAuthenticated) {
     return (
       <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-[#F7F5F1]">
         <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-[#D8CFC2] text-center space-y-6">
@@ -562,18 +572,12 @@ export default function ProfilePage() {
           </div>
 
           {userVouchers.length === 0 ? (
-            <div className="py-10 text-center space-y-3 bg-[#FAF8F5] rounded-xl border border-dashed border-[#D8CFC2] p-6">
-              <div className="text-3xl">🎟️</div>
-              <p
-                className="text-base font-bold text-[#30251D]"
-                style={{ fontFamily: "var(--font-heading, serif)" }}
-              >
-                Bạn chưa có mã khuyến mãi nào.
-              </p>
-              <p className="text-xs text-[#76513B] max-w-md mx-auto leading-relaxed">
-                Hãy tích lũy điểm để đổi những ưu đãi hấp dẫn ở mục phía trên! Mỗi đơn hàng thanh toán thành công sẽ giúp bạn tích thêm 100 điểm thưởng.
-              </p>
-            </div>
+            <EmptyState
+              title="Bạn chưa có mã khuyến mãi nào"
+              description="Hãy tích lũy điểm thưởng từ các đơn hàng để đổi những ưu đãi hấp dẫn ở mục phía trên nhé!"
+              actionLabel="Đổi ưu đãi ngay"
+              actionHref="#redeem-section"
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {userVouchers.map((voucher) => {
@@ -681,20 +685,17 @@ export default function ProfilePage() {
           </div>
 
           {loadingOrders ? (
-            <div className="py-8 text-center text-[#76513B]/70 text-sm">
-              Đang tải danh sách đơn hàng...
+            <div className="py-8">
+              <LoadingState size="sm" message="Đang tải danh sách đơn hàng gần đây..." />
             </div>
           ) : recentOrders.length === 0 ? (
-            <div className="py-8 text-center space-y-3">
-              <p className="text-[#76513B] text-sm">
-                Bạn chưa có đơn hàng nào trong tài khoản.
-              </p>
-              <Link
-                href="/menu"
-                className="inline-block px-4 py-2 text-xs font-bold uppercase tracking-wider text-[#30251D] bg-[#EAE1D2] hover:bg-[#D8CFC2] rounded-lg transition"
-              >
-                Khám phá thực đơn ngay
-              </Link>
+            <div className="py-4">
+              <EmptyState
+                title="Chưa có đơn hàng gần đây"
+                description="Bạn chưa có đơn hàng nào trong tài khoản. Hãy khám phá thực đơn để chọn món yêu thích nhé."
+                actionLabel="Khám phá thực đơn ngay"
+                actionHref="/menu"
+              />
             </div>
           ) : (
             <div className="divide-y divide-[#D8CFC2]/40">
