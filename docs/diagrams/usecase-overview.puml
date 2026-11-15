@@ -1,0 +1,80 @@
+@startuml
+
+title BrewLite - Sơ đồ Use Case tổng quát
+
+left to right direction
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+actor "Khách hàng\n(General Customer)" as GeneralCustomer
+actor "Khách vãng lai\n(Guest)" as Guest
+actor "Khách hàng đã đăng nhập\n(Customer)" as Customer
+actor "VNPay Gateway" as VNPay <<system>>
+
+' Phân cấp kế thừa Actor
+Guest --|> GeneralCustomer
+Customer --|> GeneralCustomer
+
+rectangle "BrewLite" {
+
+    ' Phân hệ Xác thực & Tài khoản
+    usecase "Đăng ký" as UC01
+    usecase "Đăng nhập" as UC02
+    usecase "Đăng xuất" as UC16
+
+    ' Phân hệ Thực đơn & Giỏ hàng
+    usecase "Xem thực đơn" as UC03
+    usecase "Xem chi tiết sản phẩm" as UC04
+    usecase "Tùy chỉnh đồ uống\n(size, topping, đường, đá)" as UC07
+    usecase "Thêm sản phẩm vào giỏ hàng" as UC06
+    usecase "Xem & quản lý giỏ hàng" as UC05
+
+    ' Phân hệ Đặt hàng & Thanh toán
+    usecase "Đặt hàng (Tạo đơn hàng)" as UC08
+    usecase "Áp dụng voucher" as UC09
+    usecase "Thanh toán qua VNPay" as UC10
+
+    ' Phân hệ Quản lý đơn hàng
+    usecase "Xem lịch sử đơn hàng" as UC11
+    usecase "Theo dõi tiến trình đơn hàng" as UC12
+    usecase "Hủy đơn hàng" as UC13
+
+    ' Phân hệ Khách hàng thân thiết (Loyalty)
+    usecase "Xem điểm thưởng" as UC14
+    usecase "Đổi điểm thưởng lấy voucher" as UC15
+
+}
+
+' Tương tác của Khách hàng chung (GeneralCustomer)
+GeneralCustomer -- UC03
+GeneralCustomer -- UC04
+GeneralCustomer -- UC05
+GeneralCustomer -- UC06
+
+' Tương tác của Khách vãng lai (Guest)
+Guest -- UC01
+Guest -- UC02
+
+' Tương tác của Khách hàng đã đăng nhập (Customer)
+Customer -- UC08
+Customer -- UC11
+Customer -- UC14
+Customer -- UC16
+
+' Quan hệ <<include>> (bắt buộc)
+UC06 ..> UC07 : <<include>>
+UC08 ..> UC10 : <<include>>
+
+' Quan hệ <<extend>> (tùy chọn / mở rộng)
+UC09 ..> UC08 : <<extend>>
+UC12 ..> UC11 : <<extend>>
+UC13 ..> UC11 : <<extend>>
+UC15 ..> UC14 : <<extend>>
+
+' Tác nhân ngoài Cổng thanh toán
+UC10 -- VNPay
+
+@enduml
