@@ -8,6 +8,7 @@ import { getProducts } from "../lib/products-api";
 import { ErrorState } from "../components/ErrorState";
 import { EmptyState } from "../components/EmptyState";
 import type { ProductSummary } from "../types/product";
+import { getFullImageUrl } from "../lib/api-client";
 
 // ─── 1. HERO SECTION ──────────────────────────────────────────────────────────
 
@@ -161,12 +162,8 @@ interface LandingProductCardProps {
 }
 
 function LandingProductCard({ product }: LandingProductCardProps) {
-  // Chuẩn hóa đường dẫn ảnh để trỏ trực tiếp về backend port 3001
-  const fullImageUrl = product.imageUrl
-    ? product.imageUrl.startsWith("http")
-      ? product.imageUrl
-      : `http://localhost:3001${product.imageUrl}`
-    : "";
+  // Chuẩn hóa đường dẫn ảnh từ backend (Local hoặc Production)
+  const fullImageUrl = getFullImageUrl(product.imageUrl);
 
   return (
     <article className="group bg-white border border-[#D8CFC2] hover:border-[#76513B] rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md relative">

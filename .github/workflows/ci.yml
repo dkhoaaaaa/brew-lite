@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 20
     env:
       DATABASE_URL: postgresql://brewlite:brewlite@localhost:5432/brewlite?schema=public
+      DIRECT_URL: postgresql://brewlite:brewlite@localhost:5432/brewlite?schema=public
       JWT_ACCESS_SECRET: ci-only-not-a-real-secret
       JWT_REFRESH_SECRET: ci-only-not-a-real-secret
       NEXT_TELEMETRY_DISABLED: '1'

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { formatPrice } from "../../../lib/money";
 import type { ProductSummary } from "../../../types/product";
+import { getFullImageUrl } from "../../../lib/api-client";
 
 export function ProductCard({ product }: { product: ProductSummary }) {
   const isOut = Boolean(
@@ -10,11 +11,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
       (typeof product.stock === "number" && product.stock <= 0),
   );
 
-  const fullImageUrl = product.imageUrl
-    ? product.imageUrl.startsWith("http")
-      ? product.imageUrl
-      : `http://localhost:3001${product.imageUrl}`
-    : null;
+  const fullImageUrl = getFullImageUrl(product.imageUrl) || null;
 
   return (
     <article
