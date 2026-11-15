@@ -1,0 +1,53 @@
+@startuml
+
+title BrewLite - Sơ đồ Use Case: Đặt và thanh toán đơn hàng
+
+left to right direction
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+actor "Khách hàng\n(Customer)" as Customer
+actor "VNPay Gateway" as VNPay
+
+rectangle "BrewLite - Đặt và thanh toán đơn hàng" {
+
+    usecase "Xem chi tiết sản phẩm" as UC01
+    usecase "Tùy chỉnh sản phẩm\n(size, topping, đường, đá)" as UC02
+    usecase "Thêm vào giỏ hàng" as UC03
+    usecase "Xem & quản lý giỏ hàng" as UC04
+    usecase "Đặt hàng (Tạo đơn hàng)" as UC05
+    usecase "Áp dụng Voucher" as UC06
+    usecase "Thanh toán qua VNPay" as UC07
+    usecase "Xem xác nhận đơn hàng" as UC08
+    usecase "Tiếp nhận & xử lý IPN" as UC09
+    usecase "Xem lịch sử đơn hàng" as UC10
+    usecase "Theo dõi tiến trình đơn hàng" as UC11
+    usecase "Hủy đơn hàng" as UC12
+
+}
+
+' Tác nhân Khách hàng tương tác trực tiếp
+Customer -- UC01
+Customer -- UC03
+Customer -- UC04
+Customer -- UC05
+Customer -- UC07
+Customer -- UC10
+
+' Tác nhân Cổng thanh toán VNPay
+UC07 -- VNPay
+UC09 -- VNPay
+
+' Quan hệ <<include>>: Bước bắt buộc phải thực hiện trong luồng nghiệp vụ
+UC03 ..> UC02 : <<include>>
+UC07 ..> UC08 : <<include>>
+
+' Quan hệ <<extend>>: Hành động mở rộng/tùy chọn theo điều kiện
+UC06 ..> UC07 : <<extend>>
+UC11 ..> UC10 : <<extend>>
+UC12 ..> UC10 : <<extend>>
+
+@enduml
