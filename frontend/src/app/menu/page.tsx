@@ -8,6 +8,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import "../../styles/landing.css";
 import type { ProductSummary } from "../../types/product";
+import { API_URL, getFullImageUrl } from "../../lib/api-client";
 
 type CategoryFilter = "ALL" | "COFFEE" | "TEA" | "CAKE";
 
@@ -86,7 +87,7 @@ useEffect(() => {
     let active = true;
     setLoading(true);
 
-    fetch("http://localhost:3001/products?page=1")
+    fetch(`${API_URL}/products?page=1`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
         return res.json();
@@ -106,7 +107,7 @@ useEffect(() => {
             const promises = [];
             for (let p = 2; p <= totalPages; p++) {
               promises.push(
-                fetch(`http://localhost:3001/products?page=${p}`).then((r) => r.json())
+                fetch(`${API_URL}/products?page=${p}`).then((r) => r.json())
               );
             }
             const results = await Promise.all(promises);
@@ -121,11 +122,7 @@ useEffect(() => {
           ...p,
           categoryId: p.categoryId ?? null,
           categoryName: p.categoryName ?? p.category?.name ?? null,
-          imageUrl: p.imageUrl
-            ? p.imageUrl.startsWith("http")
-              ? p.imageUrl
-              : `http://localhost:3001${p.imageUrl}`
-            : null,
+          imageUrl: getFullImageUrl(p.imageUrl) || null,
         }));
 
         setProducts(normalizedProducts);

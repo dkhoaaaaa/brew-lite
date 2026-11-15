@@ -1,70 +1,63 @@
-
 services:
-  postgres:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
+
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+
+      # Neon PostgreSQL / Cloud or Local fallback
+      DATABASE_URL: ${DATABASE_URL:-${LOCAL_DATABASE_URL:-}}
+      DIRECT_URL: ${DIRECT_URL:-${LOCAL_DIRECT_URL:-}}
+
+      # Authentication
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+
+      # Payment
       PAYMENT_TTL_MINUTES: ${PAYMENT_TTL_MINUTES:-5}
       VNPAY_PAYMENT_URL: ${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
       VNPAY_TMN_CODE: ${VNPAY_TMN_CODE}
       VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET}
       VNPAY_RETURN_URL: ${VNPAY_RETURN_URL:-http://localhost:3001/payments/vnpay/return}
+
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+
+    command: pnpm --dir backend start:dev
+
     ports:
       - "3001:3000"
+
     volumes:
       - .:/app
       - root_node_modules:/app/node_modules
       - backend_node_modules:/app/backend/node_modules
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     restart: unless-stopped
+
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:3001
+
     ports:
       - "3000:3000"
+
     volumes:
       - .:/app
       - root_node_modules:/app/node_modules
       - frontend_node_modules:/app/frontend/node_modules
+
     depends_on:
       - backend
 
 volumes:
-  postgres_data:
   root_node_modules:
   frontend_node_modules:
   backend_node_modules:

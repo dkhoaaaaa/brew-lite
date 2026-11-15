@@ -2,11 +2,5 @@
   "name": "brewlite",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "pnpm@12.8.1",
-  "scripts": {
-    "dev": "docker compose -f docker-compose.yml up --build",
-    "dev:down": "docker compose -f docker-compose.yml down",
-    "dev:logs": "docker compose -f docker-compose.yml logs -f",
-    "dev:rebuild": "docker compose -f docker-compose.yml up --build --force-recreate"
-  }
+  "packageManager": "pnpm@12.8.1"
 }

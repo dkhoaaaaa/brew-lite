@@ -3,6 +3,18 @@ import { getAccessToken } from "./auth";
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+/**
+ * Chuẩn hóa URL hình ảnh sản phẩm dựa trên cấu hình môi trường API_URL.
+ */
+export function getFullImageUrl(imageUrl?: string | null): string {
+  if (!imageUrl) return "";
+  if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+    return imageUrl;
+  }
+  const cleanPath = imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`;
+  return `${API_URL}${cleanPath}`;
+}
+
 export class ApiError extends Error {
   status?: number;
   code?: string;

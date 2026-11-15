@@ -16,6 +16,7 @@ import { ToppingSelector } from "./ToppingSelector";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { EmptyState } from "../../../components/EmptyState";
+import { getFullImageUrl } from "../../../lib/api-client";
 
 export function ProductDetail({
   productId,
@@ -159,12 +160,8 @@ function ProductDetailView({
     setNotice("Đã thêm món vào giỏ hàng.");
   }
 
-  // Xử lý đường dẫn ảnh để tự động trỏ tới backend port 3001 nếu chưa có domain
-  const fullImageUrl = currentProduct.imageUrl
-    ? currentProduct.imageUrl.startsWith("http")
-      ? currentProduct.imageUrl
-      : `http://localhost:3001${currentProduct.imageUrl}`
-    : "";
+  // Chuẩn hóa đường dẫn ảnh từ backend (Local hoặc Production)
+  const fullImageUrl = getFullImageUrl(currentProduct.imageUrl);
 
   return (
     <main className="page-shell product-detail-page max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
