@@ -1,0 +1,74 @@
+@startuml
+title Brew Lite - Deployment Diagram
+left to right direction
+
+skinparam shadowing false
+skinparam linetype ortho
+skinparam nodesep 35
+skinparam ranksep 45
+
+rectangle "LOCAL" as LOCAL {
+  node "Máy lập trình viên" as DEV {
+    artifact "Mã nguồn" as SOURCE
+    artifact "Docker Compose\nMôi trường phát triển" as DOCKER
+  }
+}
+
+rectangle "CI / GITHUB" as CI {
+  rectangle "GitHub" as GITHUB {
+    artifact "Repository" as REPO
+
+    node "GitHub Actions" as ACTIONS {
+      artifact "Kiểm tra và test" as TEST
+    }
+  }
+}
+
+rectangle "PRODUCTION" as PROD {
+  rectangle "Vercel" as VERCEL {
+    node "Next.js Web App" as WEB {
+      artifact "Frontend\nNEXT_PUBLIC_API_URL" as FRONTEND
+    }
+
+    artifact "Vercel Logs" as VERCEL_LOGS
+  }
+
+  rectangle "Render" as RENDER {
+    node "Web Service" as SERVICE {
+      artifact "NestJS API\nHealth check: /health" as API
+      artifact "Environment:\nDATABASE_URL, JWT, VNPay" as ENV
+    }
+
+    artifact "Render Logs" as RENDER_LOGS
+  }
+
+  node "Neon" as NEON {
+    database "PostgreSQL" as POSTGRES
+    artifact "Persistent Storage" as STORAGE
+  }
+}
+
+node "Thiết bị người dùng" as USER {
+  artifact "Trình duyệt web" as BROWSER
+}
+
+SOURCE --> REPO : Git push
+REPO --> TEST : CI checks
+REPO --> FRONTEND : Auto deploy
+REPO --> API : Auto deploy
+
+BROWSER --> FRONTEND : HTTPS :443
+BROWSER --> API : HTTPS :443
+
+API --> POSTGRES : PostgreSQL TLS :5432
+API --> RENDER_LOGS : Logs
+FRONTEND --> VERCEL_LOGS : Logs
+
+' Gợi ý bố cục gần với ảnh gốc
+LOCAL -[hidden]right- CI
+CI -[hidden]down- PROD
+USER -[hidden]right- VERCEL
+VERCEL -[hidden]right- RENDER
+RENDER -[hidden]right- NEON
+
+@enduml

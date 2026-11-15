@@ -1,8 +1,7 @@
-import { describe, expect, it } from "vitest";
-import "reflect-metadata";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
-import { CreateOrderDto } from "../src/modules/orders/dto/create-order.dto.js";
+import "reflect-metadata";
+import { describe, expect, it } from "vitest";
 import {
   addCartItem,
   decreaseCartItem,
@@ -14,15 +13,16 @@ import {
   removeCartItem,
   toCreateOrderPayload,
   type CartLine,
-} from "../../frontend/src/features/cart/cart-logic.js";
+} from "../../../frontend/src/features/cart/cart-logic.js";
 import {
   GUEST_CART_STORAGE_KEY,
   getCartStorageKey,
   loadCartForIdentity,
   saveCartForIdentity,
   type CartStorage,
-} from "../../frontend/src/features/cart/cart-storage.js";
-import type { ConfiguredProduct } from "../../frontend/src/types/product.js";
+} from "../../../frontend/src/features/cart/cart-storage.js";
+import type { ConfiguredProduct } from "../../../frontend/src/types/product.js";
+import { CreateOrderDto } from "../../src/modules/orders/dto/create-order.dto.js";
 
 const baseItem: ConfiguredProduct = {
   productId: "product-1",

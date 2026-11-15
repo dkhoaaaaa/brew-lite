@@ -1,15 +1,15 @@
-import { createHash } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
-import type { Mock } from "vitest";
 import {
   BadRequestException,
   ConflictException,
 } from "@nestjs/common";
+import { createHash } from "node:crypto";
+import type { Mock } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { CreateOrderDto } from "../../src/modules/orders/dto/create-order.dto.js";
 import {
   OrdersService,
   validateStateTransition,
-} from "../src/modules/orders/orders.service.js";
-import type { CreateOrderDto } from "../src/modules/orders/dto/create-order.dto.js";
+} from "../../src/modules/orders/orders.service.js";
 
 const money = (value: number) => ({ toNumber: () => value });
 

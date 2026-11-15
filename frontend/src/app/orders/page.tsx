@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../lib/auth";
 import { formatPrice } from "../../lib/money";
 import { cancelOrder, getMyOrders, type CreatedOrderResponse } from "../../lib/orders-api";
+import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
+import { EmptyState } from "../../components/EmptyState";
 
 const TABS = [
   { id: "ALL", label: "Tất cả" },
@@ -23,6 +26,13 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const handleRetry = () => {
+    setLoading(true);
+    setError(null);
+    setRetryCount((prev) => prev + 1);
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -50,7 +60,7 @@ export default function OrdersPage() {
     return () => {
       active = false;
     };
-  }, [isAuthenticated, statusFilter]);
+  }, [isAuthenticated, statusFilter, retryCount]);
 
   // Polling tự động làm mới danh sách đơn khi có ít nhất 1 đơn đang trong tiến trình xử lý
   useEffect(() => {
@@ -238,39 +248,26 @@ export default function OrdersPage() {
 
         {/* Nội dung danh sách đơn hàng */}
         {loading ? (
-          <div className="bg-white border border-[#DED6CB] rounded-2xl p-12 text-center shadow-xs">
-            <p className="text-sm text-[#6F6258] animate-pulse">Đang tải danh sách đơn hàng của bạn...</p>
+          <div className="bg-white border border-[#DED6CB] rounded-2xl p-8 sm:p-12 text-center shadow-xs">
+            <LoadingState message="Đang tải danh sách đơn hàng của bạn..." />
           </div>
         ) : error ? (
-          <div className="bg-white border border-rose-200 rounded-2xl p-8 sm:p-10 text-center shadow-xs">
-            <h2 className="text-xl font-bold text-rose-800 mb-2 font-heading">Không thể tải dữ liệu</h2>
-            <p className="text-sm text-[#6F6258] mb-6">{error}</p>
-            <button
-              className="inline-flex items-center justify-center bg-white border border-[#DED6CB] hover:bg-stone-50 text-[#30251D] font-semibold text-sm px-5 py-2.5 rounded-lg transition-colors cursor-pointer"
-              onClick={() => setStatusFilter((prev) => prev)}
-              type="button"
-            >
-              Thử lại
-            </button>
-          </div>
+          <ErrorState
+            title="Không thể tải đơn hàng của bạn"
+            message={error}
+            onRetry={handleRetry}
+          />
         ) : orders.length === 0 ? (
-          <section className="bg-white border border-[#DED6CB] rounded-2xl p-10 sm:p-12 text-center shadow-xs">
-            <h2 className="text-2xl font-bold text-[#30251D] mb-3 font-heading">
-              Bạn chưa có đơn hàng nào
-            </h2>
-            <p className="text-sm text-[#6F6258] leading-relaxed mb-6 max-w-md mx-auto">
-              {statusFilter === "ALL"
+          <EmptyState
+            title="Bạn chưa có đơn hàng nào"
+            description={
+              statusFilter === "ALL"
                 ? "Hãy khám phá những thức uống hấp dẫn của BrewLite và bắt đầu đơn hàng đầu tiên của bạn."
-                : `Không tìm thấy đơn hàng nào ở trạng thái "${TABS.find((t) => t.id === statusFilter)?.label}".`}
-            </p>
-            <Link
-              className="inline-flex items-center justify-center bg-[#38291E] hover:bg-[#241A13] !text-white font-semibold text-sm px-6 py-3 rounded-lg transition-colors shadow-xs"
-              href="/menu"
-              style={{ color: "#ffffff" }}
-            >
-              <span className="text-white font-semibold">Khám phá thực đơn</span>
-            </Link>
-          </section>
+                : `Không tìm thấy đơn hàng nào ở trạng thái "${TABS.find((t) => t.id === statusFilter)?.label}".`
+            }
+            actionLabel="Khám phá thực đơn"
+            actionHref="/menu"
+          />
         ) : (
           <div className="flex flex-col gap-5">
             {orders.map((order) => {

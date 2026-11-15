@@ -13,6 +13,10 @@ import { DRINK_PREFERENCE_PERCENTAGES } from "../../cart/cart-logic";
 import { useCart } from "../../cart/cart-store";
 import { SizeSelector } from "./SizeSelector";
 import { ToppingSelector } from "./ToppingSelector";
+import { LoadingState } from "../../../components/LoadingState";
+import { ErrorState } from "../../../components/ErrorState";
+import { EmptyState } from "../../../components/EmptyState";
+import { getFullImageUrl } from "../../../lib/api-client";
 
 export function ProductDetail({
   productId,
@@ -71,30 +75,37 @@ function ProductDetailView({
   }, [productId, retryCount]);
 
   if (loading) {
-    return <main className="page-shell"><p className="state-message" role="status">Đang tải thông tin món...</p></main>;
+    return (
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 flex items-center justify-center">
+        <LoadingState message="Đang tải thông tin món..." />
+      </main>
+    );
   }
 
   if (error) {
     const notFound = error.includes("404") || error.includes("Không tìm thấy sản phẩm");
     return (
-      <main className="page-shell">
-        <section className="state-panel" role="alert">
-          <p className="eyebrow">{notFound ? "Không tìm thấy" : "Không thể tải dữ liệu"}</p>
-          <h1>{notFound ? "Món này không còn ở đây." : "Chưa kết nối được với menu."}</h1>
-          <p>{error}</p>
-          <button
-            className="button button--dark"
-            onClick={() => {
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 flex items-center justify-center">
+        {notFound ? (
+          <EmptyState
+            title="Món này không còn ở đây"
+            description={error}
+            actionLabel="Quay lại thực đơn"
+            actionHref="/menu"
+          />
+        ) : (
+          <ErrorState
+            title="Chưa kết nối được với thực đơn"
+            message={error}
+            onRetry={() => {
               setLoading(true);
               setError(null);
               setRetryCount((count) => count + 1);
             }}
-            type="button"
-          >
-            Thử lại
-          </button>
-          <Link className="button button--dark" href="/menu">Quay lại menu</Link>
-        </section>
+            secondaryActionLabel="Quay lại thực đơn"
+            secondaryActionHref="/menu"
+          />
+        )}
       </main>
     );
   }
@@ -149,12 +160,8 @@ function ProductDetailView({
     setNotice("Đã thêm món vào giỏ hàng.");
   }
 
-  // Xử lý đường dẫn ảnh để tự động trỏ tới backend port 3001 nếu chưa có domain
-  const fullImageUrl = currentProduct.imageUrl
-    ? currentProduct.imageUrl.startsWith("http")
-      ? currentProduct.imageUrl
-      : `http://localhost:3001${currentProduct.imageUrl}`
-    : "";
+  // Chuẩn hóa đường dẫn ảnh từ backend (Local hoặc Production)
+  const fullImageUrl = getFullImageUrl(currentProduct.imageUrl);
 
   return (
     <main className="page-shell product-detail-page max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">

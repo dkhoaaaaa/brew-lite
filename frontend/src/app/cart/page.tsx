@@ -9,13 +9,15 @@ import { formatPrice, fromMinorUnits, toMinorUnits } from "../../lib/money";
 import { createOrder } from "../../lib/orders-api";
 import { useAuth } from "../../lib/auth";
 import { toCreateOrderPayload } from "../../features/cart/cart-logic";
+import { LoadingState } from "../../components/LoadingState";
+import { EmptyState } from "../../components/EmptyState";
 
 export default function CartPage() {
   return (
     <Suspense
       fallback={
-        <main className="page-shell">
-          <p className="state-message" role="status">Đang tải giỏ hàng...</p>
+        <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] flex items-center justify-center">
+          <LoadingState message="Đang tải giỏ hàng..." />
         </main>
       }
     >
@@ -181,30 +183,44 @@ function CartContent() {
 
   if (!hydrated || (autoCheckout && isSubmitting)) {
     return (
-      <main className="page-shell">
-        <p className="state-message" role="status">
-          {autoCheckout && isSubmitting
-            ? "Đang chuẩn bị đơn hàng cho tài khoản của bạn..."
-            : "Đang khôi phục giỏ hàng..."}
-        </p>
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 flex items-center justify-center">
+        <LoadingState
+          message={
+            autoCheckout && isSubmitting
+              ? "Đang chuẩn bị đơn hàng cho tài khoản của bạn..."
+              : "Đang khôi phục giỏ hàng..."
+          }
+        />
       </main>
     );
   }
 
   if (items.length === 0) {
     return (
-      <main className="page-shell cart-page">
-        <p className="eyebrow">BrewLite · giỏ hàng</p>
-        <p className="state-message" role="status">
-          Giỏ hàng hiện được lưu trên thiết bị này. Backend chưa có API giỏ hàng nên
-          chưa đồng bộ giữa thiết bị hoặc lên cơ sở dữ liệu.
-        </p>
-        {storageError && <p className="payment-result payment-result--failure" role="alert">{storageError}</p>}
-        <section className="state-panel">
-          <h1>Giỏ hàng đang trống</h1>
-          <p>Chọn một món từ menu để bắt đầu.</p>
-          <Link className="button button--dark" href="/menu">Tiếp tục mua hàng</Link>
-        </section>
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <header className="pb-4 border-b border-[#d8d8cb]">
+            <p className="text-xs font-bold tracking-[0.16em] uppercase text-[#76513B] mb-1">
+              BrewLite · giỏ hàng
+            </p>
+            <h1 className="text-2xl sm:text-3xl font-bold font-heading text-[#30251D]">
+              Món đã chọn
+            </h1>
+          </header>
+
+          {storageError && (
+            <p className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-xl mb-4" role="alert">
+              {storageError}
+            </p>
+          )}
+
+          <EmptyState
+            title="Giỏ hàng của bạn đang trống"
+            description="Hãy chọn món nước hoặc bánh yêu thích từ thực đơn để bắt đầu đặt hàng nhé."
+            actionLabel="Tiếp tục mua hàng"
+            actionHref="/menu"
+          />
+        </div>
       </main>
     );
   }

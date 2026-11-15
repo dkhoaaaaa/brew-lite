@@ -4,8 +4,11 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { ProductCard } from "../../features/products/components/ProductCard";
 import { ProductSkeleton } from "../../features/products/components/ProductSkeleton";
+import { ErrorState } from "../../components/ErrorState";
+import { EmptyState } from "../../components/EmptyState";
 import "../../styles/landing.css";
 import type { ProductSummary } from "../../types/product";
+import { API_URL, getFullImageUrl } from "../../lib/api-client";
 
 type CategoryFilter = "ALL" | "COFFEE" | "TEA" | "CAKE";
 
@@ -84,7 +87,7 @@ useEffect(() => {
     let active = true;
     setLoading(true);
 
-    fetch("http://localhost:3001/products?page=1")
+    fetch(`${API_URL}/products?page=1`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Không thể tải danh sách sản phẩm.");
         return res.json();
@@ -104,7 +107,7 @@ useEffect(() => {
             const promises = [];
             for (let p = 2; p <= totalPages; p++) {
               promises.push(
-                fetch(`http://localhost:3001/products?page=${p}`).then((r) => r.json())
+                fetch(`${API_URL}/products?page=${p}`).then((r) => r.json())
               );
             }
             const results = await Promise.all(promises);
@@ -119,11 +122,7 @@ useEffect(() => {
           ...p,
           categoryId: p.categoryId ?? null,
           categoryName: p.categoryName ?? p.category?.name ?? null,
-          imageUrl: p.imageUrl
-            ? p.imageUrl.startsWith("http")
-              ? p.imageUrl
-              : `http://localhost:3001${p.imageUrl}`
-            : null,
+          imageUrl: getFullImageUrl(p.imageUrl) || null,
         }));
 
         setProducts(normalizedProducts);
@@ -234,30 +233,39 @@ useEffect(() => {
 
         {/* Trạng thái Lỗi */}
         {error && (
-          <div className="menu-state-card" role="alert">
-            <h2 className="text-xl font-bold mb-2">Không thể tải danh sách thực đơn</h2>
-            <p className="text-sm text-stone-600 mb-6">{error}</p>
-            <button className="lp-hero__cta" onClick={retry} type="button">
-              Thử lại
-            </button>
+          <div className="py-8">
+            <ErrorState
+              title="Không thể tải danh sách thực đơn"
+              message={error}
+              onRetry={retry}
+            />
           </div>
         )}
 
         {/* Trạng thái Không có kết quả */}
         {!loading && !error && filteredProducts.length === 0 && (
-          <div className="menu-state-card text-center py-12">
-            <h2 className="text-xl font-bold mb-2">Không tìm thấy sản phẩm phù hợp</h2>
-            <p className="text-sm text-stone-600 mb-6">Vui lòng thử danh mục hoặc từ khóa khác.</p>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategory("ALL");
-                setSearchTerm("");
-              }}
-              className="px-5 py-2.5 bg-amber-800 hover:bg-amber-900 text-white font-semibold text-sm rounded-lg transition-colors cursor-pointer shadow-xs"
-            >
-              Xóa bộ lọc
-            </button>
+          <div className="py-8">
+            <EmptyState
+              title={
+                products.length === 0
+                  ? "Chưa có sản phẩm trong thực đơn"
+                  : "Không tìm thấy sản phẩm phù hợp"
+              }
+              description={
+                products.length === 0
+                  ? "Hệ thống đang cập nhật các món mới, bạn vui lòng quay lại sau nhé."
+                  : "Vui lòng thử chọn danh mục khác hoặc xóa bộ lọc tìm kiếm."
+              }
+              actionLabel={products.length === 0 ? undefined : "Xóa bộ lọc"}
+              onAction={
+                products.length === 0
+                  ? undefined
+                  : () => {
+                      setSelectedCategory("ALL");
+                      setSearchTerm("");
+                    }
+              }
+            />
           </div>
         )}
 

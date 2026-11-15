@@ -22,6 +22,7 @@ import {
   saveCartForIdentity,
 } from "./cart-storage";
 import { getAccessToken, getUser, useAuth } from "../../lib/auth";
+import { getFullImageUrl } from "../../lib/api-client";
 
 export type { CartLine } from "./cart-logic";
 
@@ -160,12 +161,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }
 
   function addItem(item: ConfiguredProduct) {
-    // Tự động chuẩn hóa đường dẫn ảnh để trỏ đúng về backend port 3001
-    const normalizedImageUrl = item.productImageUrl
-      ? item.productImageUrl.startsWith("http")
-        ? item.productImageUrl
-        : `http://localhost:3001${item.productImageUrl}`
-      : "";
+    // Tự động chuẩn hóa đường dẫn ảnh từ backend (Local hoặc Production)
+    const normalizedImageUrl = getFullImageUrl(item.productImageUrl);
 
     const normalizedItem: ConfiguredProduct = {
       ...item,

@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BrewLite - Frontend (Next.js)
 
-## Getting Started
+Giao diện người dùng cho hệ thống BrewLite, được xây dựng bằng **Next.js 16**, **React 19** và **Tailwind CSS**.
 
-First, run the development server:
+---
+
+## Môi trường thực thi
+
+Giao diện frontend được vận hành thông qua **Docker Compose**. Bạn không cần cài đặt Node.js hay pnpm trên máy host để chạy giao diện.
+
+### Khởi chạy dịch vụ
+
+Từ thư mục gốc dự án:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Khởi chạy toàn bộ hệ thống
+docker compose up -d --build
+
+# Xem nhật ký hoạt động của frontend
+docker compose logs -f frontend
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Truy cập giao diện tại: [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Các thao tác trong Container
 
-## Learn More
+```bash
+# Kiểm tra Linter
+docker compose exec -w /app/frontend frontend pnpm run lint
 
-To learn more about Next.js, take a look at the following resources:
+# Build production test trong container
+docker compose exec -w /app/frontend frontend pnpm run build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Triển khai (Deployment)
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Frontend được cấu hình để triển khai trực tiếp lên **Vercel** bằng cách trỏ Root Directory vào thư mục `frontend/` (sử dụng Next.js App Router).

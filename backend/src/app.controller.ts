@@ -11,10 +11,7 @@ export class AppController {
   }
 
   @Get("health")
-  getHealth() {
-    return {
-      success: true,
-      message: "BrewLite API is running",
-    };
+  async getHealth() {
+    return this.appService.checkHealth();
   }
 }
