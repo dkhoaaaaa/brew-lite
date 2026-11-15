@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatPrice } from "../lib/money";
 import { getProducts } from "../lib/products-api";
+import { ErrorState } from "../components/ErrorState";
+import { EmptyState } from "../components/EmptyState";
 import type { ProductSummary } from "../types/product";
 
 // ─── 1. HERO SECTION ──────────────────────────────────────────────────────────
@@ -324,22 +326,24 @@ function ProductShowcaseSection({
 
         {/* Error State */}
         {!loading && error && (
-          <div className="text-center py-10 flex flex-col items-center justify-center gap-3" role="alert">
-            <p className="text-sm text-red-600">{error}</p>
-            <button
-              className="px-6 py-2.5 bg-[#38291E] hover:bg-[#50392A] text-white text-xs font-bold rounded-full transition-colors cursor-pointer min-h-[40px]"
-              onClick={onRetry}
-              type="button"
-            >
-              Thử lại
-            </button>
+          <div className="py-6">
+            <ErrorState
+              title="Không thể tải sản phẩm nổi bật"
+              message={error}
+              onRetry={onRetry}
+            />
           </div>
         )}
 
         {/* Empty State */}
         {!loading && !error && products.length === 0 && (
-          <div className="text-center py-10">
-            <p className="text-sm text-[#76513B]">Chưa có sản phẩm trong danh mục này.</p>
+          <div className="py-6">
+            <EmptyState
+              title="Chưa có sản phẩm nổi bật"
+              description="Các món mới đang được cập nhật, bạn vui lòng quay lại sau nhé."
+              actionLabel="Xem toàn bộ thực đơn"
+              actionHref="/menu"
+            />
           </div>
         )}
 

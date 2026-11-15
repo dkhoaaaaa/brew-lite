@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { PaymentsService } from "../src/modules/payments/payments.service.js";
+import { PaymentsService } from "../../src/modules/payments/payments.service.js";
 
 const secret = "test-hash-secret";
 const tmnCode = "TESTMERCHANT";

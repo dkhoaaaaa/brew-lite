@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Toast } from "../../components/Toast";
+import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
+import { EmptyState } from "../../components/EmptyState";
 import { useCart } from "../../features/cart/cart-store";
 import { useAuth } from "../../lib/auth";
 import { getMyVouchers, type UserVoucher } from "../../lib/loyalty-api";
@@ -20,8 +23,8 @@ export default function CheckoutPage() {
   return (
     <Suspense
       fallback={
-        <main className="page-shell">
-          <p className="state-message" role="status">Đang tải thông tin đơn hàng...</p>
+        <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] flex items-center justify-center">
+          <LoadingState message="Đang tải thông tin đơn hàng..." />
         </main>
       }
     >
@@ -194,42 +197,34 @@ function CheckoutContent() {
 
   if (!orderId) {
     return (
-      <main className="page-shell">
-        <section className="state-panel">
-          <h1>Chưa có đơn hàng để thanh toán.</h1>
-          <p>Hãy tạo đơn từ giỏ hàng trước khi tiếp tục.</p>
-          <Link className="button button--dark" href="/cart">Quay lại giỏ hàng</Link>
-        </section>
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 flex items-center justify-center">
+        <EmptyState
+          title="Chưa có đơn hàng để thanh toán"
+          description="Hãy chọn món và tạo đơn từ giỏ hàng trước khi tiếp tục thanh toán nhé."
+          actionLabel="Quay lại giỏ hàng"
+          actionHref="/cart"
+        />
       </main>
     );
   }
 
   if (!hydrated || !orderSnapshotLoaded) {
-    return <main className="page-shell"><p className="state-message" role="status">Đang tải thông tin thanh toán...</p></main>;
+    return (
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 flex items-center justify-center">
+        <LoadingState message="Đang tải thông tin thanh toán..." />
+      </main>
+    );
   }
 
   if (orderError || !createdOrder) {
     return (
-      <main className="page-shell">
-        <section className="state-panel">
-          <p className="eyebrow">Chưa có đơn được xác nhận</p>
-          <h1>Chưa thể tiếp tục checkout.</h1>
-          <p>{orderError ?? "Không tìm thấy phản hồi tạo đơn từ backend."}</p>
-          <div className="flex flex-col sm:flex-row gap-3 mt-4">
-            <Link
-              className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 bg-[#163326] hover:bg-[#0e2118] text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-xs"
-              href="/cart"
-            >
-              Quay lại giỏ hàng
-            </Link>
-            <Link
-              className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 border border-[#DED6CB] bg-white hover:bg-[#FAF8F5] text-[#30251D] text-xs sm:text-sm font-bold rounded-xl transition shadow-xs"
-              href="/orders"
-            >
-              Xem đơn hàng của tôi
-            </Link>
-          </div>
-        </section>
+      <main className="min-h-[calc(100vh-80px)] bg-[#F7F5F1] py-12 px-4 sm:px-6 flex items-center justify-center">
+        <ErrorState
+          title="Chưa thể tiếp tục thanh toán"
+          message={orderError ?? "Không tìm thấy phản hồi tạo đơn từ hệ thống."}
+          secondaryActionLabel="Quay lại giỏ hàng"
+          secondaryActionHref="/cart"
+        />
       </main>
     );
   }

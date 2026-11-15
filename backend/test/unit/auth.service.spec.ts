@@ -2,8 +2,8 @@ import { ConflictException, NotFoundException, UnauthorizedException } from "@ne
 import { JwtService } from "@nestjs/jwt";
 import bcrypt from "bcrypt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthService } from "../src/modules/auth/auth.service.js";
-import { PrismaService } from "../src/prisma/prisma.service.js";
+import { AuthService } from "../../src/modules/auth/auth.service.js";
+import { PrismaService } from "../../src/prisma/prisma.service.js";
 
 describe("AuthService", () => {
   let authService: AuthService;
