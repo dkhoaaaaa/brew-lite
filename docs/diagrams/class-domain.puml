@@ -1,0 +1,246 @@
+@startuml
+hide circle
+skinparam classAttributeIconSize 0
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam roundcorner 6
+skinparam linetype ortho
+skinparam nodesep 60
+skinparam ranksep 60
+
+' ========================================================
+' 1. CÁC BẢNG ENUM (KHỚP 100% CODE SERVICE)
+' ========================================================
+enum OrderStatus {
+  PENDING
+  PAID
+  PREPARING
+  READY
+  COMPLETED
+  PAYMENT_FAILED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  VNPAY
+  E_WALLET
+  BANK_CARD
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum DiscountType {
+  FIXED
+  PERCENTAGE
+}
+
+' ========================================================
+' 2. CÁC LỚP TRỤC CHÍNH (USER - ORDER - PAYMENT)
+' ========================================================
+class User {
+  id: String
+  email: String
+  fullName: String
+  phone: String
+  loyaltyPoints: Integer
+  isActive: Boolean
+  createdAt: DateTime
+  --
+  addLoyaltyPoints(pts: Integer): void
+  deductLoyaltyPoints(pts: Integer): Boolean
+}
+
+class Order {
+  id: String
+  orderCode: String
+  status: OrderStatus
+  subtotal: Decimal
+  discountAmount: Decimal
+  pointsEarned: Integer
+  total: Decimal
+  note: String
+  expiresAt: DateTime
+  createdAt: DateTime
+  --
+  calculateTotal(): Decimal
+  applyVoucher(promo: Promotion): Boolean
+  validateStateTransition(targetStatus: OrderStatus): void
+  isExpired(): Boolean
+  cancelOrder(): void
+}
+
+class Payment {
+  id: String
+  idempotencyKey: String
+  amount: Decimal
+  method: PaymentMethod
+  provider: String
+  status: PaymentStatus
+  transactionCode: String
+  failureReason: String
+  paidAt: DateTime
+  --
+  processPayment(): PaymentStatus
+  verifySignature(): Boolean
+}
+
+' ========================================================
+' 3. KHUYẾN MÃI & SỬ DỤNG VOUCHER (TASK 10.4)
+' ========================================================
+class Promotion {
+  id: String
+  code: String
+  name: String
+  discountType: DiscountType
+  discountValue: Decimal
+  minOrderAmount: Decimal
+  maxDiscountAmount: Decimal
+  startAt: DateTime
+  endAt: DateTime
+  isActive: Boolean
+  --
+  isValid(order: Order): Boolean
+  calculateDiscount(order: Order): Decimal
+}
+
+class PromotionUsage {
+  id: String
+  promotionId: String
+  userId: String
+  orderId: String
+  discountAmount: Decimal
+  usedAt: DateTime
+}
+
+class LoyaltyReward {
+  id: String
+  name: String
+  pointsCost: Integer
+  discountType: DiscountType
+  discountValue: Decimal
+  minOrderAmount: Decimal
+  isActive: Boolean
+}
+
+' ========================================================
+' 4. CHI TIẾT ĐƠN HÀNG (ORDER ITEM & TOPPING ĐI KÈM)
+' ========================================================
+class OrderItem {
+  id: String
+  productName: String
+  sizeCode: String
+  sugarPercent: Integer
+  icePercent: Integer
+  quantity: Integer
+  unitPrice: Decimal
+  lineTotal: Decimal
+  note: String
+  --
+  calculateLineTotal(): Decimal
+}
+
+class OrderItemTopping {
+  toppingName: String
+  toppingPrice: Decimal
+  quantity: Integer
+}
+
+' ========================================================
+' 5. MENU, SẢN PHẨM & TOPPING (CÓ PRODUCT_TOPPING)
+' ========================================================
+class Category {
+  id: String
+  name: String
+  isActive: Boolean
+}
+
+class Product {
+  id: String
+  name: String
+  description: String
+  price: Decimal
+  imageUrl: String
+  stock: Integer
+  isActive: Boolean
+  --
+  isAvailable(): Boolean
+  calculateAvailableStock(): Integer
+  updateStock(qty: Integer): void
+}
+
+class ProductSize {
+  id: String
+  sizeCode: String
+  extraPrice: Decimal
+  isActive: Boolean
+}
+
+class ProductTopping {
+  productId: String
+  toppingId: String
+}
+
+class Topping {
+  id: String
+  name: String
+  price: Decimal
+  stock: Integer
+  isActive: Boolean
+}
+
+' ========================================================
+' 6. PHÂN HỆ QUẢN LÝ KHO & CÔNG THỨC PHA CHẾ (TASK 10.3)
+' ========================================================
+class Ingredient {
+  id: String
+  name: String
+  unit: String
+  stockQuantity: Decimal
+  minStock: Decimal
+  isActive: Boolean
+  --
+  checkStock(qty: Decimal): Boolean
+  updateStock(qty: Decimal): void
+}
+
+class ProductRecipe {
+  productId: String
+  ingredientId: String
+  quantity: Decimal
+}
+
+' ========================================================
+' 7. CÁC QUAN HỆ & BỘI SỐ
+' ========================================================
+User "1" -down-> "0..*" Order : places >
+Order "1" -down-> "0..*" Payment : settled by >
+
+Order "1" -right-> "0..1" PromotionUsage : records >
+PromotionUsage "0..*" -up-> "1" User : used by >
+PromotionUsage "0..*" -right-> "1" Promotion : applies >
+Promotion "0..*" -down-> "0..1" LoyaltyReward : generated from >
+User "1" -right-> "0..*" Promotion : owns >
+
+Order "1" *-left- "1..50" OrderItem : contains >
+OrderItem "1" *-down- "0..10" OrderItemTopping : includes >
+OrderItem "0..*" -down-> "1" Product : references >
+OrderItem "0..*" -left-> "0..1" ProductSize : selects >
+OrderItemTopping "0..*" -down-> "1" Topping : specifies >
+
+Category "1" o-down- "0..*" Product : categorizes >
+Product "1" *-left- "0..*" ProductSize : provides >
+
+Product "1" *-- "0..*" ProductTopping : configures >
+ProductTopping "0..*" --> "1" Topping : includes >
+
+Product "1" *-- "1..*" ProductRecipe : requires >
+ProductRecipe "0..*" --> "1" Ingredient : consumes >
+
+@enduml
