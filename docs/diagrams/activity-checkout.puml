@@ -1,0 +1,88 @@
+@startuml
+skinparam DefaultTextAlignment center
+
+|Customer|
+start
+:Xem thực đơn (Menu);
+
+repeat
+  :Chọn sản phẩm & tùy chỉnh (Size, đường, đá, Topping);
+  :Thêm vào giỏ hàng;
+repeat while (Tiếp tục chọn món?) is (có)
+-> không;
+
+:Nhấn nút Thanh toán (Checkout);
+
+|UI (Next.js)|
+if (Khách hàng đã đăng nhập?) then (chưa)
+  :Chuyển hướng đến trang Login kèm redirect URL;
+  |Customer|
+  :Thực hiện Đăng nhập thành công;
+  |UI (Next.js)|
+endif
+
+:Gửi yêu cầu tạo đơn hàng (Kèm Idempotency-Key);
+
+|Backend (NestJS)|
+:Kiểm tra thông tin & Tồn kho nguyên liệu;
+
+while (Không đủ tồn kho nguyên liệu?) is (Có)
+  |UI (Next.js)|
+  :Hiển thị lỗi thiếu nguyên liệu;
+
+  |Customer|
+  :Điều chỉnh số lượng / Chọn lại món;
+
+  |UI (Next.js)|
+  :Gửi lại yêu cầu tạo đơn hàng;
+
+  |Backend (NestJS)|
+  :Kiểm tra lại thông tin & Tồn kho nguyên liệu;
+endwhile (Không)
+
+|Backend (NestJS)|
+:Trừ tồn kho (giữ chỗ) & Tạo đơn PENDING;
+
+repeat
+  :Khởi tạo liên kết thanh toán VNPAY (paymentUrl);
+
+  |UI (Next.js)|
+  :Chuyển hướng sang cổng VNPAY (Return URL);
+
+  |Payment Gateway (VNPAY)|
+  :Khách Quét mã QR / Nhập OTP xác thực;
+
+  if (vnp_ResponseCode == '00'?) then (thành công)
+    |Backend (NestJS)|
+    :Nhận IPN Webhook ngầm: Cập nhật đơn PAID, cộng Loyalty;
+
+    |UI (Next.js)|
+    :Hiển thị trang Xác nhận đặt hàng thành công;
+
+    |Customer|
+    :Theo dõi tiến trình đơn (PAID -> PREPARING -> COMPLETED);
+    stop
+
+  else (thất bại)
+    |Payment Gateway (VNPAY)|
+    :Gửi IPN thông báo giao dịch thất bại;
+    
+    |Backend (NestJS)|
+    :Nhận IPN Webhook ngầm: Cập nhật đơn PAYMENT_FAILED;
+
+    |UI (Next.js)|
+    :Hiển thị thông báo thất bại kèm lựa chọn;
+
+    if (Lựa chọn của khách / Hệ thống?) then ([Thử lại])
+      |Backend (NestJS)|
+      :Khởi tạo lại link thanh toán VNPAY mới;
+    else ([Hủy đơn / Hết hạn TTL 5 phút])
+      |Backend (NestJS)|
+      :Hệ thống tự động trigger restoreOrderStock();
+      :Đổi trạng thái đơn thành CANCELLED;
+      stop
+    endif
+  endif
+repeat while ()
+
+@enduml
