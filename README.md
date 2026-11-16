@@ -66,8 +66,7 @@ brew-lite/
 ├── docs/                       # Tài liệu thiết kế: kiến trúc, sơ đồ PlantUML, truy vết yêu cầu
 │   ├── diagrams/               # Sơ đồ: activity, sequence, class, deployment, use case
 │   └── traceability-matrix.md  # Ma trận truy vết yêu cầu phần mềm
-├── docker-compose.yml          # Docker Compose chuẩn (backend:3001, frontend:3000)
-├── docker-compose.local.yml    # Cấu hình mở rộng bổ sung PostgreSQL 17 container
+├── docker-compose.yml          # Docker Compose trọn gói (PostgreSQL:5432, backend:3001, frontend:3000)
 ├── pnpm-workspace.yaml         # Cấu hình pnpm monorepo workspace
 ├── package.json                # Root package metadata (pnpm@12.8.1)
 └── README.md                   # Tài liệu hướng dẫn onboarding hệ thống
@@ -156,13 +155,13 @@ PAYMENT_TTL_MINUTES=5
 Khởi chạy đồng thời cả 3 container: **PostgreSQL Local**, **NestJS Backend** và **Next.js Frontend**:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+docker compose up -d --build
 ```
 
 - **Mục đích:** Tải image PostgreSQL 17 Alpine, đóng gói dependencies và chạy backend, frontend ở chế độ nền (`-d`).
 - **Kiểm tra trạng thái container:**
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.local.yml ps
+  docker compose ps
   ```
 - **Kết quả mong đợi:** Cả 3 service hiển thị trạng thái hoạt động:
   - `postgres`: trạng thái `Up` kèm `(healthy)`
@@ -175,18 +174,18 @@ Chạy Prisma migration và seed trực tiếp vào container backend:
 
 1. **Áp dụng các bản cập nhật CSDL (Prisma Migration):**
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
+   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
    ```
    *Kết quả mong đợi:* Hiển thị `All migrations have been successfully applied.`
 
 2. **Tạo Prisma Client (nếu cần cập nhật schema):**
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts generate
+   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts generate
    ```
 
 3. **Nạp dữ liệu mẫu ban đầu (Seed Data):**
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
+   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
    ```
    *Kết quả mong đợi:* Hệ thống thông báo nạp thành công:
    - 151 sản phẩm đồ uống và bánh ngọt thuộc các danh mục Cà phê, Trà, Bánh.
@@ -307,13 +306,13 @@ Tất cả các bài kiểm thử và công cụ rà soát mã nguồn đều c�
 
 - **Chạy Unit Test & Integration Test:**
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm test
+  docker compose exec -w /app/backend backend pnpm test
   ```
   *(Thực thi toàn bộ các file `*.spec.ts` bao gồm kiểm thử dịch vụ giỏ hàng, xác thực auth, tính toán khuyến mãi, thanh toán và kiểm tra tồn kho nguyên liệu)*.
 
 - **Chạy End-to-End (E2E) Test:**
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm test:e2e
+  docker compose exec -w /app/backend backend pnpm test:e2e
   ```
   *(Thực thi kiểm thử luồng tạo đơn và thanh toán `checkout-flow.e2e-spec.ts`)*.
 
@@ -321,22 +320,22 @@ Tất cả các bài kiểm thử và công cụ rà soát mã nguồn đều c�
 
 - **Kiểm tra linter Backend (Oxlint):**
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm run lint
+  docker compose exec -w /app/backend backend pnpm run lint
   ```
 - **Kiểm tra linter Frontend (ESLint):**
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/frontend frontend pnpm run lint
+  docker compose exec -w /app/frontend frontend pnpm run lint
   ```
 
 ### 8.3. Kiểm tra Build ứng dụng
 
 - **Build kiểm thử Backend:**
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm run build
+  docker compose exec -w /app/backend backend pnpm run build
   ```
 - **Build kiểm thử Frontend:**
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/frontend frontend pnpm run build
+  docker compose exec -w /app/frontend frontend pnpm run build
   ```
 
 ---
@@ -347,13 +346,13 @@ Tất cả các bài kiểm thử và công cụ rà soát mã nguồn đều c�
 
 | Thao tác | Lệnh thực thi (Môi trường Local Docker DB) |
 |---|---|
-| **Xem logs thời gian thực toàn bộ hệ thống** | `docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f` |
-| **Xem logs riêng Backend** | `docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f backend` |
-| **Xem logs riêng Frontend** | `docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f frontend` |
-| **Xem logs riêng PostgreSQL** | `docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f postgres` |
-| **Khởi động lại các container** | `docker compose -f docker-compose.yml -f docker-compose.local.yml restart` |
-| **Dừng các container** | `docker compose -f docker-compose.yml -f docker-compose.local.yml stop` |
-| **Dừng và gỡ bỏ container, giữ nguyên volume dữ liệu** | `docker compose -f docker-compose.yml -f docker-compose.local.yml down` |
+| **Xem logs thời gian thực toàn bộ hệ thống** | `docker compose logs -f` |
+| **Xem logs riêng Backend** | `docker compose logs -f backend` |
+| **Xem logs riêng Frontend** | `docker compose logs -f frontend` |
+| **Xem logs riêng PostgreSQL** | `docker compose logs -f postgres` |
+| **Khởi động lại các container** | `docker compose restart` |
+| **Dừng các container** | `docker compose stop` |
+| **Dừng và gỡ bỏ container, giữ nguyên volume dữ liệu** | `docker compose down` |
 
 ### 9.2. Hướng dẫn xử lý các lỗi thường gặp
 
@@ -375,16 +374,16 @@ Tất cả các bài kiểm thử và công cụ rà soát mã nguồn đều c�
 #### 3. Lỗi: Không thể kết nối cơ sở dữ liệu (`Can't reach database server at postgres:5432`)
 - **Nguyên nhân:** Container `postgres` chưa hoàn tất khởi động hoặc chưa đạt trạng thái `healthy` khi backend cố gắng kết nối.
 - **Khắc phục:**
-  - Kiểm tra trạng thái postgres: `docker compose -f docker-compose.yml -f docker-compose.local.yml ps`
-  - Xem log chi tiết: `docker compose -f docker-compose.yml -f docker-compose.local.yml logs postgres`
-  - Đợi khoảng 10-15 giây rồi khởi động lại backend: `docker compose -f docker-compose.yml -f docker-compose.local.yml restart backend`
+  - Kiểm tra trạng thái postgres: `docker compose ps`
+  - Xem log chi tiết: `docker compose logs postgres`
+  - Đợi khoảng 10-15 giây rồi khởi động lại backend: `docker compose restart backend`
 
 #### 4. Lỗi: Chưa áp dụng migration trước khi seed dữ liệu
 - **Nguyên nhân:** Bảng trong CSDL chưa được khởi tạo dẫn tới script seed báo lỗi quan hệ không tồn tại (`relation does not exist`).
 - **Khắc phục:** Luôn chạy lệnh `migrate deploy` trước khi chạy `db seed`:
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
-  docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
+  docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
+  docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
   ```
 
 #### 5. Lỗi: Thiếu biến môi trường bắt buộc
@@ -405,14 +404,14 @@ Tất cả các bài kiểm thử và công cụ rà soát mã nguồn đều c�
 
 ```bash
 # 1. Dừng và xóa toàn bộ container cùng volume dữ liệu postgres_data
-docker compose -f docker-compose.yml -f docker-compose.local.yml down -v
+docker compose down -v
 
 # 2. Khởi chạy lại hệ thống mới hoàn toàn
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+docker compose up -d --build
 
 # 3. Đồng bộ lại cấu trúc và nạp lại dữ liệu seed
-docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
-docker compose -f docker-compose.yml -f docker-compose.local.yml exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
+docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
+docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
 ```
 
 ---
