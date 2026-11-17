@@ -3,8 +3,26 @@
 BrewLite là ứng dụng thương mại điện tử chuyên về đồ uống và bánh ngọt, hỗ trợ tùy chỉnh size/topping, kiểm soát tồn kho nguyên liệu thời gian thực (Optimistic Locking) và tích hợp cổng thanh toán trực tuyến VNPay Sandbox.
 
 Hệ thống được thiết kế theo kiến trúc **Monorepo** dùng chung duy nhất một mã nguồn cho cả môi trường phát triển cục bộ (**Local Development**) và môi trường phát hành (**Production Deployment**):
-- **Local Development:** Khởi chạy 100% bằng **Docker Compose** kết hợp **PostgreSQL local**, không yêu cầu cài đặt Node.js hay pnpm trên máy host.
+- **Local Development:** Khởi chạy 100% bằng **Docker Compose** kết hợp **PostgreSQL local**, không yêu cầu cài đặt Node.js hay pnpm trên máy host (hỗ trợ cả chạy trực tiếp bằng pnpm).
 - **Production Deployment:** Triển khai độc lập Frontend trên **Vercel**, Backend API trên **Render**, và lưu trữ dữ liệu trên **Neon Serverless PostgreSQL**.
+
+---
+
+## Tiêu chí nghiệm thu & Phiên bản Production
+
+> **Tiêu chí nghiệm thu (Acceptance Criteria):**  
+> Một người không thuộc nhóm có thể **clone repository, chạy hệ thống theo README** và **truy cập phiên bản production** từ các URL được cung cấp dưới đây mà không gặp bất kỳ trở ngại nào.
+
+### Đường dẫn Production & Thông tin phát hành
+
+| Thành phần | Môi trường / Nền tảng | Đường dẫn truy cập (Production URLs) | Trạng thái |
+|---|---|---|---|
+| **Giao diện người dùng (Frontend)** | Vercel (Next.js 16) | [https://brew-lite-tau.vercel.app](https://brew-lite-tau.vercel.app) | Live |
+| **Backend REST API** | Render (NestJS 12) | [https://brew-lite-backend.onrender.com](https://brew-lite-backend.onrender.com) | Live |
+| **Kiểm tra sức khỏe (Health Check)** | Render API Endpoint | [https://brew-lite-backend.onrender.com/health](https://brew-lite-backend.onrender.com/health) | Live |
+| **Cơ sở dữ liệu đám mây** | Neon PostgreSQL 17 | Serverless Pooled & Direct Connections | Live |
+| **Phiên bản phát hành (Tag / Release)** | GitHub Releases | `v1.0.0` ([Xem Release Notes](https://github.com/dkhoaaaaa/brew-lite/releases)) | v1.0.0 |
+| **Video Demo End-to-End** | Google Drive / YouTube | [Xem Video Demo](https://drive.google.com/file/d/your-video-id/view) | Sẵn sàng |
 
 ---
 
@@ -13,13 +31,17 @@ Hệ thống được thiết kế theo kiến trúc **Monorepo** dùng chung du
 1. [Công nghệ sử dụng](#1-công-nghệ-sử-dụng)
 2. [Cấu trúc thư mục Monorepo](#2-cấu-trúc-thư-mục-monorepo)
 3. [Điều kiện tiên quyết](#3-điều-kiện-tiên-quyết)
-4. [Hướng dẫn khởi chạy Local bằng Docker (Ưu tiên)](#4-hướng-dẫn-khởi-chạy-local-bằng-docker-ưu-tiên)
-5. [Hướng dẫn tùy chọn: Kết nối Neon PostgreSQL Cloud](#5-hướng-dẫn-tùy-chọn-kết-nối-neon-postgresql-cloud)
-6. [Tài khoản Demo & Quy trình kiểm thử nghiệp vụ](#6-tài-khoản-demo--quy-trình-kiểm-thử-nghiệp-vụ)
-7. [Tích hợp cổng thanh toán VNPay Sandbox](#7-tích-hợp-cổng-thanh-toán-vnpay-sandbox)
-8. [Kiểm thử tự động (Testing), Lint & Build](#8-kiểm-thử-tự-động-testing-lint--build)
-9. [Quản trị Docker & Khắc phục sự cố (Troubleshooting)](#9-quản-trị-docker--khắc-phục-sự-cố-troubleshooting)
-10. [So sánh môi trường Local & Production](#10-so-sánh-môi-trường-local--production)
+4. [Hướng dẫn Khởi chạy Local (Local Setup & Run)](#4-hướng-dẫn-khởi-chạy-local-local-setup--run)
+   - [Cách 1: Khởi chạy bằng Docker Compose (Khuyên dùng)](#cách-1-khởi-chạy-bằng-docker-compose-khuyên-dùng)
+   - [Cách 2: Khởi chạy trực tiếp bằng pnpm / Node.js (Không dùng Docker)](#cách-2-khởi-chạy-trực-tiếp-bằng-pnpm--nodejs-không-dùng-docker)
+   - [Tùy chọn: Kết nối Neon PostgreSQL Cloud](#tùy-chọn-kết-nối-neon-postgresql-cloud)
+5. [Hướng dẫn Kiểm thử tự động (Testing Guide)](#5-hướng-dẫn-kiểm-thử-tự-động-testing-guide)
+6. [Hướng dẫn Đóng gói & Build (Build Guide)](#6-hướng-dẫn-đóng-gói--build-build-guide)
+7. [Hướng dẫn Triển khai (Deployment Guide)](#7-hướng-dẫn-triển-khai-deployment-guide)
+8. [Hướng dẫn Thu hồi & Hoàn tác (Rollback Guide)](#8-hướng-dẫn-thu-hồi--hoàn-tác-rollback-guide)
+9. [Tài khoản Demo & Kịch bản kiểm thử nghiệp vụ E2E](#9-tài-khoản-demo--kịch-bản-kiểm-thử-nghiệp-vụ-e2e)
+10. [Tích hợp cổng thanh toán VNPay Sandbox](#10-tích-hợp-cổng-thanh-toán-vnpay-sandbox)
+11. [Quản trị Docker & Khắc phục sự cố (Troubleshooting)](#11-quản-trị-docker--khắc-phục-sự-cố-troubleshooting)
 
 ---
 
@@ -32,7 +54,7 @@ Hệ thống được thiết kế theo kiến trúc **Monorepo** dùng chung du
 | **Cơ sở dữ liệu** | PostgreSQL 17 (Docker Local / Neon Cloud) | CSDL quan hệ lưu trữ sản phẩm, đơn hàng, người dùng, giao dịch |
 | **ORM & Migrations**| Prisma 7 (`@prisma/client`, `@prisma/adapter-pg`) | Quản lý schema 15 bảng, migrations tự động và nạp seed dữ liệu |
 | **Thanh toán** | VNPay Gateway (Sandbox vpcpay v2) | Xử lý thanh toán thẻ ATM/nội địa, xác minh chữ ký bảo mật IPN |
-| **Đóng gói & Vận hành** | Docker, Docker Compose, Alpine Linux | Đóng gói môi trường đồng nhất, hot-reload cho cả backend và frontend |
+| **Đóng gói & CI/CD** | Docker Compose, GitHub Actions, GHCR | Tự động hóa kiểm thử, đóng gói image và kích hoạt deploy |
 
 ---
 
@@ -45,7 +67,7 @@ brew-lite/
 │   │   ├── app/                # App Router: menu, cart, checkout, orders, auth, profile
 │   │   ├── components/         # UI Components: Navbar, Toast, LoadingState, EmptyState...
 │   │   ├── features/           # Logic tính năng: cart (cart-store, logic), products
-│   │   ├── lib/                # Client gọi API: products-api, orders-api, auth, money
+│   │   ├── lib/                # Client gọi API: api-client, auth, money
 │   │   └── types/              # Định nghĩa kiểu dữ liệu TypeScript
 │   ├── Dockerfile              # Dockerfile chạy Next.js dev server trong container
 │   └── package.json            # Dependencies và scripts frontend
@@ -66,6 +88,9 @@ brew-lite/
 ├── docs/                       # Tài liệu thiết kế: kiến trúc, sơ đồ PlantUML, truy vết yêu cầu
 │   ├── diagrams/               # Sơ đồ: activity, sequence, class, deployment, use case
 │   └── traceability-matrix.md  # Ma trận truy vết yêu cầu phần mềm
+├── .github/workflows/          # Tự động hóa CI/CD
+│   ├── ci.yml                  # Pipeline kiểm thử tự động trên Pull Request
+│   └── cd.yml                  # Pipeline build image, deploy và smoke test trên main/tag
 ├── docker-compose.yml          # Docker Compose trọn gói (PostgreSQL:5432, backend:3001, frontend:3000)
 ├── pnpm-workspace.yaml         # Cấu hình pnpm monorepo workspace
 ├── package.json                # Root package metadata (pnpm@12.8.1)
@@ -76,207 +101,312 @@ brew-lite/
 
 ## 3. Điều kiện tiên quyết
 
-Người mới chỉ cần cài đặt 2 công cụ nền tảng sau trên máy tính:
+Người mới chỉ cần chuẩn bị một trong hai môi trường sau:
 
-1. **Git:** Quản lý mã nguồn.
-   - Kiểm tra cài đặt: `git --version`
-2. **Docker Desktop:** Chạy toàn bộ hệ thống (Frontend, Backend, PostgreSQL) trong container.
-   - Kiểm tra cài đặt: `docker --version` và `docker compose version`
-   - *Lưu ý trên Windows:* Đảm bảo Docker Desktop đã được kích hoạt chế độ **WSL 2 Backend** (trong Settings → General → Use the WSL 2 based engine). Đảm bảo biểu tượng Docker ở thanh taskbar hiển thị trạng thái màu xanh lá (**Engine running**).
-
-> **Lưu ý:** Bạn **không cần** cài đặt Node.js, npm, pnpm hay PostgreSQL trên máy tính host. Toàn bộ môi trường runtime, dependencies và công cụ biên dịch đều chạy cách ly trong Docker.
+- **Nếu dùng Docker (Khuyên dùng):** Cài đặt **Git** và **Docker Desktop** (bật WSL 2 trên Windows). Không cần cài Node.js, pnpm hay PostgreSQL.
+- **Nếu chạy trực tiếp (Không dùng Docker):** Cài đặt **Node.js 22+**, **pnpm 12.8+** (`corepack enable && corepack prepare pnpm@12.8.1 --activate`), và máy có sẵn PostgreSQL đang chạy hoặc kết nối Neon Cloud.
 
 ---
 
-## 4. Hướng dẫn khởi chạy Local bằng Docker (Ưu tiên)
+## 4. Hướng dẫn Khởi chạy Local (Local Setup & Run)
 
-Đây là cách thiết lập nhanh nhất, an toàn nhất và độc lập 100% với môi trường bên ngoài. Hệ thống sẽ khởi chạy cả database PostgreSQL nội bộ bằng container.
+### Cách 1: Khởi chạy bằng Docker Compose (Khuyên dùng)
 
-### Bước 1: Clone Repository
+Cách này thiết lập nhanh nhất, an toàn nhất và độc lập 100% với hệ thống máy host:
 
-Mở terminal (PowerShell trên Windows hoặc Terminal trên macOS/Linux):
-
+#### Bước 1: Clone Repository
 ```bash
 git clone https://github.com/dkhoaaaaa/brew-lite.git
 cd brew-lite
 ```
 
-### Bước 2: Tạo file cấu hình môi trường `.env`
+#### Bước 2: Tạo file cấu hình môi trường `.env`
+Sao chép file cấu hình mẫu `.env.example` thành `.env` tại thư mục gốc:
+- **Windows (PowerShell):** `Copy-Item .env.example .env`
+- **macOS / Linux:** `cp .env.example .env`
 
-Sao chép file `.env.example` thành file `.env` tại thư mục gốc:
-
-- **Trên Windows PowerShell:**
-  ```powershell
-  Copy-Item .env.example .env
-  ```
-- **Trên Linux / macOS:**
-  ```bash
-  cp .env.example .env
-  ```
-
-Mở file `.env` vừa tạo và sử dụng cấu hình mẫu an toàn sau cho môi trường Local Docker:
-
+File `.env` mặc định đã có sẵn thông số chuẩn an toàn cho Docker local:
 ```env
-# ==================================================
-# 1. LOCAL POSTGRESQL - DOCKER
-# ==================================================
 POSTGRES_USER=brewlite
 POSTGRES_PASSWORD=brewlite_secure_password_123
 POSTGRES_DB=brewlite
-
-# Kết nối nội bộ giữa các container trong mạng Docker
 LOCAL_DATABASE_URL="postgresql://brewlite:brewlite_secure_password_123@postgres:5432/brewlite?schema=public"
 LOCAL_DIRECT_URL="postgresql://brewlite:brewlite_secure_password_123@postgres:5432/brewlite?schema=public"
-
-# ==================================================
-# 2. JWT AUTHENTICATION
-# ==================================================
 JWT_ACCESS_SECRET=brewlite_dev_access_secret_key_2026
 JWT_REFRESH_SECRET=brewlite_dev_refresh_secret_key_2026
-
-# ==================================================
-# 3. FRONTEND & BACKEND PORTS
-# ==================================================
 NEXT_PUBLIC_API_URL=http://localhost:3001
 FRONTEND_BASE_URL=http://localhost:3000
-
-# ==================================================
-# 4. VNPAY SANDBOX (Tùy chọn khi thanh toán)
-# ==================================================
-VNPAY_PAYMENT_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
-VNPAY_TMN_CODE=your_vnpay_sandbox_tmn_code
-VNPAY_HASH_SECRET=your_vnpay_sandbox_hash_secret
-VNPAY_RETURN_URL=http://localhost:3001/payments/vnpay/return
-PAYMENT_TTL_MINUTES=5
 ```
 
-### Bước 3: Build và khởi chạy các dịch vụ Docker
-
-Khởi chạy đồng thời cả 3 container: **PostgreSQL Local**, **NestJS Backend** và **Next.js Frontend**:
-
+#### Bước 3: Build và khởi chạy các dịch vụ Docker
 ```bash
 docker compose up -d --build
 ```
+Kiểm tra trạng thái container: `docker compose ps`. Cả 3 container `postgres`, `backend`, `frontend` đều ở trạng thái `Up`.
 
-- **Mục đích:** Tải image PostgreSQL 17 Alpine, đóng gói dependencies và chạy backend, frontend ở chế độ nền (`-d`).
-- **Kiểm tra trạng thái container:**
+#### Bước 4: Chạy Migration và Nạp dữ liệu mẫu (Seed Data)
+```bash
+# Áp dụng cấu trúc bảng CSDL
+docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
+
+# Nạp dữ liệu sản phẩm, topping, voucher và tài khoản demo
+docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
+```
+
+#### Bước 5: Truy cập ứng dụng Local
+- **Frontend UI:** [http://localhost:3000](http://localhost:3000) (Trang chủ & Menu đồ uống)
+- **Backend API Root:** [http://localhost:3001](http://localhost:3001)
+- **Health Check API:** [http://localhost:3001/health](http://localhost:3001/health) (Trả về status: ok, database: connected)
+
+---
+
+### Cách 2: Khởi chạy trực tiếp bằng pnpm / Node.js (Không dùng Docker)
+
+Dành cho nhà phát triển muốn chạy native trên máy host:
+
+```bash
+# 1. Clone và di chuyển vào thư mục dự án
+git clone https://github.com/dkhoaaaaa/brew-lite.git
+cd brew-lite
+
+# 2. Cài đặt toàn bộ dependencies trong monorepo
+pnpm install
+
+# 3. Tạo file cấu hình .env (trỏ URL database về postgres của bạn)
+cp .env.example .env
+
+# 4. Sinh Prisma Client, chạy migration và nạp seed
+pnpm --dir backend run prisma:generate
+pnpm --dir backend exec prisma --config prisma7.config.ts migrate deploy
+pnpm --dir backend exec prisma --config prisma7.config.ts db seed
+
+# 5. Khởi chạy đồng thời cả Backend và Frontend
+# Terminal 1 (Backend NestJS - port 3001):
+pnpm --dir backend run start:dev
+
+# Terminal 2 (Frontend Next.js - port 3000):
+pnpm --dir frontend run dev
+```
+
+---
+
+### Tùy chọn: Kết nối Neon PostgreSQL Cloud
+Nếu muốn dùng database trên đám mây Neon thay vì chạy PostgreSQL local:
+1. Đăng ký tài khoản miễn phí tại [Neon.tech](https://neon.tech) và tạo project.
+2. Cập nhật `DATABASE_URL` (Pooled) và `DIRECT_URL` (Direct) vào file `.env`.
+3. Chạy lệnh migrate và seed trực tiếp lên Neon:
+   ```bash
+   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
+   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
+   ```
+
+---
+
+## 5. Hướng dẫn Kiểm thử tự động (Testing Guide)
+
+Toàn bộ kiểm thử có thể thực thi thông qua Docker hoặc trực tiếp bằng pnpm:
+
+### 5.1. Kiểm thử Backend (Vitest)
+
+- **Chạy Unit Test & Integration Test:**
+  - *Qua Docker:*
+    ```bash
+    docker compose exec -w /app/backend backend pnpm test
+    ```
+  - *Trực tiếp:*
+    ```bash
+    pnpm --dir backend run test
+    ```
+  *(Thực thi kiểm thử logic giỏ hàng, xác thực JWT, tính toán voucher, thanh toán VNPay và kiểm tra tồn kho nguyên liệu)*.
+
+- **Chạy End-to-End (E2E) Test:**
+  - *Qua Docker:*
+    ```bash
+    docker compose exec -w /app/backend backend pnpm test:e2e
+    ```
+  - *Trực tiếp:*
+    ```bash
+    pnpm --dir backend run test:e2e
+    ```
+  *(Kiểm thử tự động luồng hoàn chỉnh `checkout-flow.e2e-spec.ts`)*.
+
+### 5.2. Kiểm tra quy chuẩn mã nguồn (Linting)
+
+```bash
+# Kiểm tra linter Backend (Oxlint)
+pnpm --dir backend run lint
+# hoặc qua Docker: docker compose exec -w /app/backend backend pnpm run lint
+
+# Kiểm tra linter Frontend (ESLint)
+pnpm --dir frontend run lint
+# hoặc qua Docker: docker compose exec -w /app/frontend frontend pnpm run lint
+```
+
+---
+
+## 6. Hướng dẫn Đóng gói & Build (Build Guide)
+
+### 6.1. Build mã nguồn Frontend & Backend
+
+- **Build Backend (NestJS):**
   ```bash
-  docker compose ps
+  pnpm --dir backend run build
+  # hoặc: docker compose exec -w /app/backend backend pnpm run build
   ```
-- **Kết quả mong đợi:** Cả 3 service hiển thị trạng thái hoạt động:
-  - `postgres`: trạng thái `Up` kèm `(healthy)`
-  - `backend`: trạng thái `Up` (port map `0.0.0.0:3001->3000/tcp`)
-  - `frontend`: trạng thái `Up` (port map `0.0.0.0:3000->3000/tcp`)
+  *Kết quả build:* Tạo thư mục `backend/dist/` chứa mã JavaScript biên dịch sẵn sàng thực thi.
 
-### Bước 4: Đồng bộ CSDL và Nạp dữ liệu mẫu (Seed)
+- **Build Frontend (Next.js):**
+  ```bash
+  pnpm --dir frontend run build
+  # hoặc: docker compose exec -w /app/frontend frontend pnpm run build
+  ```
+  *Kết quả build:* Tạo thư mục `frontend/.next/` đã tối ưu hóa tài nguyên tĩnh (Static Generation) và SSR.
 
-Chạy Prisma migration và seed trực tiếp vào container backend:
+### 6.2. Đóng gói Docker Images
 
-1. **Áp dụng các bản cập nhật CSDL (Prisma Migration):**
-   ```bash
-   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
-   ```
-   *Kết quả mong đợi:* Hiển thị `All migrations have been successfully applied.`
-
-2. **Tạo Prisma Client (nếu cần cập nhật schema):**
-   ```bash
-   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts generate
-   ```
-
-3. **Nạp dữ liệu mẫu ban đầu (Seed Data):**
-   ```bash
-   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
-   ```
-   *Kết quả mong đợi:* Hệ thống thông báo nạp thành công:
-   - 151 sản phẩm đồ uống và bánh ngọt thuộc các danh mục Cà phê, Trà, Bánh.
-   - Bảng định lượng nguyên liệu cho từng kích thước (Size S, M, L).
-   - Danh sách topping và 10 mã voucher khuyến mãi.
-   - 2 tài khoản demo: `example@gmail.com` và `customer1@gmail.com`.
-
-### Bước 5: Kiểm tra và truy cập ứng dụng
-
-Mở trình duyệt web để kiểm tra các cổng hoạt động:
-
-| Thành phần | Đường dẫn truy cập | Kết quả mong đợi |
-|---|---|---|
-| **Health Check API** | [http://localhost:3001/health](http://localhost:3001/health) | Trả về JSON: `{"success":true,"status":"ok","database":"connected"}` |
-| **Backend API Root** | [http://localhost:3001](http://localhost:3001) | Chuỗi thông báo: `Hello from BrewLite Backend!` |
-| **Giao diện Web (Frontend)** | [http://localhost:3000](http://localhost:3000) | Hiển thị trang chủ BrewLite với danh sách sản phẩm đầy đủ |
+- **Build Backend Production Image bằng Dockerfile đa tầng:**
+  ```bash
+  docker build -f backend/Dockerfile -t brewlite-backend:latest .
+  ```
+- **Build toàn bộ hệ thống bằng Docker Compose:**
+  ```bash
+  docker compose build
+  ```
 
 ---
 
-## 5. Hướng dẫn tùy chọn: Kết nối Neon PostgreSQL Cloud
+## 7. Hướng dẫn Triển khai (Deployment Guide)
 
-Nếu bạn muốn sử dụng cơ sở dữ liệu điện toán đám mây Neon thay vì chạy container PostgreSQL cục bộ:
+### 7.1. Cơ chế CI/CD tự động (GitHub Actions)
 
-1. Đăng ký tài khoản miễn phí tại [Neon.tech](https://neon.tech) và tạo project PostgreSQL mới.
-2. Tại bảng điều khiển Neon (mục **Connection Details**), sao chép 2 chuỗi kết nối:
-   - **Pooled connection string:** Cập nhật vào biến `DATABASE_URL` trong file `.env`.
-   - **Direct connection string:** Cập nhật vào biến `DIRECT_URL` trong file `.env`.
-   *(Đảm bảo chuỗi kết nối luôn có tham số `?sslmode=require`)*.
-3. Khởi chạy hệ thống bằng cấu hình Docker Compose mặc định (không kèm file local):
-   ```bash
-   docker compose up -d --build
-   ```
-4. Chạy migration và seed dữ liệu lên Neon Cloud:
-   ```bash
-   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
-   docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
-   ```
+Dự án đã tích hợp sẵn quy trình triển khai liên tục qua workflow `.github/workflows/cd.yml`. Mỗi khi mã nguồn được push/merge vào nhánh `main` hoặc tạo Git Tag phiên bản (`v*`), hệ thống sẽ:
+1. **Quality Gate:** Tự động cài đặt dependencies, chạy linter (`Oxlint`, `ESLint`), chạy Unit Test (`Vitest`) và kiểm tra build cả 2 tầng.
+2. **Container Registry:** Đóng gói image Docker Backend và đẩy lên GitHub Container Registry (`ghcr.io/dkhoaaaaa/brew-lite/backend`).
+3. **Trigger Deploy:** Kích hoạt Deploy Hook tới **Render** (Backend) và **Vercel** (Frontend).
+4. **Smoke Test:** Tự động gửi request kiểm tra Health Check API (`/health`) và Frontend URL để đảm bảo phiên bản mới sẵn sàng 100%.
+
+### 7.2. Hướng dẫn cấu hình triển khai thủ công lần đầu
+
+#### A. Triển khai Frontend lên Vercel
+1. Đăng nhập [Vercel](https://vercel.com) $\rightarrow$ **Add New Project** $\rightarrow$ Chọn repository `brew-lite`.
+2. Thiết lập cấu hình:
+   - **Framework Preset:** `Next.js`
+   - **Root Directory:** `frontend`
+   - **Build Command:** `pnpm run build`
+   - **Output Directory:** `.next`
+3. Cài đặt biến môi trường (Environment Variables):
+   - `NEXT_PUBLIC_API_URL`: Điền URL Backend Render (ví dụ: `https://brew-lite-backend.onrender.com`)
+4. Nhấn **Deploy**.
+
+#### B. Triển khai Backend lên Render
+1. Đăng nhập [Render](https://render.com) $\rightarrow$ **New Web Service** $\rightarrow$ Chọn repository `brew-lite`.
+2. Thiết lập cấu hình:
+   - **Environment:** `Docker` (hoặc `Node`)
+   - **Dockerfile Path:** `backend/Dockerfile`
+   - **Docker Context:** `.` (thư mục gốc)
+3. Cài đặt biến môi trường:
+   - `DATABASE_URL`: Chuỗi kết nối Pooled từ Neon PostgreSQL Cloud (`?sslmode=require`)
+   - `DIRECT_URL`: Chuỗi kết nối Direct từ Neon PostgreSQL Cloud (`?sslmode=require`)
+   - `JWT_ACCESS_SECRET` & `JWT_REFRESH_SECRET`: Khóa bí mật bảo mật cho JWT.
+   - `FRONTEND_BASE_URL`: `https://brew-lite-tau.vercel.app`
+   - `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_PAYMENT_URL`, `VNPAY_RETURN_URL`.
+4. Nhấn **Create Web Service**.
 
 ---
 
-## 6. Tài khoản Demo & Quy trình kiểm thử nghiệp vụ
+## 8. Hướng dẫn Thu hồi & Hoàn tác (Rollback Guide)
 
-### 6.1. Danh sách tài khoản thử nghiệm (Được tạo tự động từ Seed)
+Khi phiên bản triển khai mới gặp sự cố nghiêm trọng, thực hiện quy trình rollback theo từng tầng dưới đây để đưa hệ thống về trạng thái ổn định ngay lập tức:
+
+### 8.1. Rollback Frontend (Vercel) — Dưới 1 phút
+Vercel hỗ trợ Instant Rollback về bản build ổn định trước đó mà không cần biên dịch lại:
+1. Truy cập [Vercel Dashboard](https://vercel.com/dashboard) $\rightarrow$ Chọn project **brew-lite**.
+2. Chuyển sang tab **Deployments**.
+3. Tìm bản deployment thành công gần nhất trước thời điểm xảy ra lỗi.
+4. Bấm vào biểu tượng dấu ba chấm `...` ở góc phải deployment đó $\rightarrow$ Chọn **Instant Rollback** (hoặc **Promote to Production**).
+5. Vercel sẽ chuyển hướng tên miền chính về bản build này ngay lập tức.
+
+### 8.2. Rollback Backend (Render & Docker Registry)
+1. Truy cập [Render Dashboard](https://dashboard.render.com) $\rightarrow$ Chọn Web Service Backend.
+2. Vào mục **Events** hoặc **Deploys**.
+3. Tìm bản deploy thành công gần nhất $\rightarrow$ Nhấn vào biểu tượng `...` và chọn **Rollback to this deploy**.
+4. *(Nếu triển khai bằng Docker Container ghcr.io)*:
+   Kéo tag commit SHA trước đó từ registry và khởi chạy lại:
+   ```bash
+   docker pull ghcr.io/dkhoaaaaa/brew-lite/backend:sha-<commit_sha_cũ>
+   ```
+
+### 8.3. Rollback Cơ sở dữ liệu (Database Migration Rollback)
+Nếu bản migration mới làm lỗi schema database:
+1. **Khôi phục dữ liệu tức thời trên Neon Cloud:** Sử dụng tính năng **Point-in-Time Restore (PITR)** trên bảng điều khiển Neon để đưa CSDL về thời điểm trước khi áp dụng migration bị lỗi.
+2. **Khôi phục bằng mã nguồn:**
+   - Tạo file migration hoàn tác schema về trạng thái trước:
+     ```bash
+     pnpm --dir backend exec prisma migrate dev --name rollback_last_change
+     ```
+   - Áp dụng migration hoàn tác lên server:
+     ```bash
+     pnpm --dir backend exec prisma --config prisma7.config.ts migrate deploy
+     ```
+
+### 8.4. Rollback Mã nguồn trên Git
+Để đảo ngược commit gây lỗi trên nhánh `main` mà vẫn bảo toàn toàn bộ lịch sử commit:
+```bash
+# 1. Tạo commit đảo ngược thay đổi của commit lỗi
+git revert <commit-hash-lỗi>
+
+# 2. Đẩy commit revert lên nhánh main (kích hoạt lại CI/CD deploy bản sửa lỗi)
+git push origin main
+```
+
+---
+
+## 9. Tài khoản Demo & Kịch bản kiểm thử nghiệp vụ E2E
+
+### 9.1. Danh sách tài khoản thử nghiệm (Được tạo tự động từ Seed)
 
 | Vai trò | Email đăng nhập | Mật khẩu | Điểm tích lũy | Mục đích kiểm thử |
 |---|---|---|---|---|
 | **Khách hàng tiêu chuẩn** | `example@gmail.com` | `Example@123` | 0 điểm | Kiểm tra luồng đặt món, giỏ hàng, áp dụng voucher tân thủ |
 | **Khách hàng thân thiết** | `customer1@gmail.com` | `Customer@123` | 200 điểm | Kiểm tra tính năng tích lũy và đổi voucher bằng điểm thưởng |
 
-### 6.2. Kịch bản kiểm thử luồng nghiệp vụ từ đầu đến cuối (E2E Flow)
+### 9.2. Kịch bản kiểm thử luồng nghiệp vụ từ đầu đến cuối (E2E Flow)
 
 1. **Khám phá thực đơn (`/menu`):**
-   - Truy cập `http://localhost:3000/menu`.
+   - Truy cập trang Menu trên production hoặc local.
    - Lọc sản phẩm theo danh mục: *Cà phê*, *Trà*, *Bánh* hoặc tìm kiếm theo tên món.
 2. **Tùy chỉnh món (`/products/[id]`):**
    - Chọn một sản phẩm (ví dụ: *Cà phê Sữa Đá*).
-   - Chọn kích thước (Size S, M hoặc L), thêm các loại Topping (Thạch, Trân châu,...), điều chỉnh mức đá/đường.
-   - Nhấn **Thêm vào giỏ hàng**.
+   - Chọn kích thước (Size S, M hoặc L), thêm các loại Topping, điều chỉnh mức đá/đường $\rightarrow$ Nhấn **Thêm vào giỏ hàng**.
 3. **Quản lý giỏ hàng (`/cart`):**
-   - Bấm vào biểu tượng Giỏ hàng ở góc phải màn hình.
-   - Thay đổi số lượng món, kiểm tra công thức tính tổng tiền tạm tính.
+   - Bấm vào biểu tượng Giỏ hàng, thay đổi số lượng món, kiểm tra tính toán tổng tiền.
    - Bấm **Tiến hành đặt hàng**.
 4. **Đăng nhập xác thực (`/login`):**
-   - Hệ thống tự động chuyển hướng hoặc yêu cầu đăng nhập.
    - Điền thông tin tài khoản mẫu: `example@gmail.com` / `Example@123`.
-5. **Thanh toán & Áp dụng mã giảm giá (`/checkout`):**
-   - Nhập thông tin người nhận hàng và địa chỉ giao hàng.
-   - Nhập mã khuyến mãi có sẵn từ seed (ví dụ: `BREWLITE10`, `WELCOME15`, `COFFEE5K`) và nhấn áp dụng.
-   - Chọn phương thức thanh toán: **VNPay Sandbox**.
-   - Bấm **Xác nhận đặt hàng**.
-6. **Xác nhận & Theo dõi đơn hàng (`/orders` & `/orders/[id]`):**
-   - Sau khi tạo đơn, hệ thống ghi nhận đơn hàng với trạng thái `PENDING`.
-   - Vào mục **Lịch sử đơn hàng** (`/orders`) để xem danh sách đơn đã đặt và kiểm tra thông tin chi tiết từng đơn hàng.
+5. **Thanh toán & Áp dụng voucher (`/checkout`):**
+   - Nhập thông tin giao hàng, áp dụng mã giảm giá có sẵn (ví dụ: `BREWLITE10`, `WELCOME15`, `COFFEE5K`).
+   - Chọn phương thức thanh toán: **VNPay Sandbox** $\rightarrow$ Bấm **Xác nhận đặt hàng**.
+6. **Xác nhận & Theo dõi đơn hàng (`/orders`):**
+   - Kiểm tra đơn hàng được ghi nhận, trạng thái đơn và chi tiết lịch sử mua hàng.
+
+### 9.3. Video Demo trực tiếp luồng End-to-End
+
+- **Đường dẫn xem video:** [Nhấp vào đây để xem Video Demo (Google Drive)](https://drive.google.com/file/d/your-video-id/view) *(Hoặc mở file lưu trữ nội bộ: `docs/Bản demo end to end.mp4`)*
+- **Nội dung bao gồm trong video demo:**
+  1. **Khám phá thực đơn:** Lọc danh mục món Cà phê / Trà / Bánh và tìm kiếm thời gian thực.
+  2. **Tùy chỉnh món (Product Customization):** Chọn size S/M/L, chọn topping và điều chỉnh tỷ lệ đá/đường.
+  3. **Quản lý giỏ hàng:** Cập nhật số lượng món, xóa món và xem tổng tiền tự động.
+  4. **Đăng nhập & Đặt hàng:** Sử dụng tài khoản demo, nhập địa chỉ nhận hàng và áp dụng mã giảm giá voucher.
+  5. **Thanh toán trực tuyến:** Chuyển hướng sang cổng thanh toán VNPay Sandbox, thực hiện thanh toán bằng thẻ ATM nội địa NCB.
+  6. **Kiểm tra kết quả:** Nhận thông báo giao dịch thành công, kiểm tra đơn hàng tại trang Lịch sử đơn hàng và cập nhật tồn kho nguyên liệu.
 
 ---
 
-## 7. Tích hợp cổng thanh toán VNPay Sandbox
+## 10. Tích hợp cổng thanh toán VNPay Sandbox
 
-### 7.1. Cấu hình thông tin kết nối
+### 10.1. Thông tin thẻ ngân hàng thử nghiệm (NCB Sandbox)
 
-Để kích hoạt tính năng thanh toán chuyển hướng qua cổng VNPay:
-1. Đăng ký tài khoản thử nghiệm tại cổng [VNPay Sandbox Developers](https://sandbox.vnpayment.vn/devreg/).
-2. Lấy thông tin mã kết nối và cập nhật vào file `.env`:
-   - `VNPAY_TMN_CODE`: Mã Website (Terminal ID) do VNPay cấp.
-   - `VNPAY_HASH_SECRET`: Chuỗi bí mật tạo chữ ký (Secret Key).
-   - `VNPAY_PAYMENT_URL`: `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`
-   - `VNPAY_RETURN_URL`: `http://localhost:3001/payments/vnpay/return`
-
-### 7.2. Thông tin thẻ ngân hàng thử nghiệm (NCB Sandbox)
-
-Khi chuyển hướng sang cổng thanh toán VNPay, chọn ngân hàng **NCB** và sử dụng thông tin thẻ thử nghiệm sau:
+Khi chuyển hướng sang cổng thanh toán VNPay, chọn ngân hàng **NCB** và sử dụng thông tin thẻ:
 
 | Thông tin | Giá trị nhập |
 |---|---|
@@ -286,145 +416,26 @@ Khi chuyển hướng sang cổng thanh toán VNPay, chọn ngân hàng **NCB** 
 | **Ngày phát hành** | `07/15` |
 | **Mã xác thực OTP** | `123456` |
 
-### 7.3. Các chức năng vẫn kiểm tra được khi CHƯA CÓ tài khoản VNPay
-
-Nếu bạn chưa đăng ký tài khoản VNPay Sandbox, hệ thống **vẫn cho phép kiểm tra đầy đủ** các tính năng nghiệp vụ cốt lõi sau:
-- Toàn bộ trải nghiệm xem menu, tìm kiếm, xem chi tiết, chọn size, topping.
-- Quản lý giỏ hàng, tính toán tổng tiền và chiết khấu.
-- Đăng ký tài khoản mới và đăng nhập JWT.
-- Tích điểm thành viên và đổi điểm thưởng lấy voucher.
-- **Tạo đơn hàng thành công (`POST /orders`):** Đơn hàng vẫn được tạo thành công trong database, lưu ở trạng thái `PENDING` và kích hoạt logic khóa tồn kho nguyên liệu (Optimistic Locking).
-- Chỉ khi nhấn nút chuyển sang cổng thanh toán VNPay, hệ thống mới thông báo cấu hình VNPay chưa hoàn tất (`503 Service Unavailable`).
+### 10.2. Kiểm thử khi chưa có cấu hình VNPay
+Hệ thống vẫn cho phép tạo đơn hàng thành công trong database (`POST /orders`), lưu trạng thái `PENDING` và kích hoạt logic khóa tồn kho nguyên liệu. Chỉ khi nhấn nút chuyển sang cổng thanh toán VNPay mà chưa điền Secret Key thì hệ thống mới báo `503 Service Unavailable`.
 
 ---
 
-## 8. Kiểm thử tự động (Testing), Lint & Build
+## 11. Quản trị Docker & Khắc phục sự cố (Troubleshooting)
 
-Tất cả các bài kiểm thử và công cụ rà soát mã nguồn đều có thể chạy trực tiếp thông qua Docker container:
+### 11.1. Các lệnh quản lý Docker thường dùng
 
-### 8.1. Kiểm thử Backend (Vitest)
-
-- **Chạy Unit Test & Integration Test:**
-  ```bash
-  docker compose exec -w /app/backend backend pnpm test
-  ```
-  *(Thực thi toàn bộ các file `*.spec.ts` bao gồm kiểm thử dịch vụ giỏ hàng, xác thực auth, tính toán khuyến mãi, thanh toán và kiểm tra tồn kho nguyên liệu)*.
-
-- **Chạy End-to-End (E2E) Test:**
-  ```bash
-  docker compose exec -w /app/backend backend pnpm test:e2e
-  ```
-  *(Thực thi kiểm thử luồng tạo đơn và thanh toán `checkout-flow.e2e-spec.ts`)*.
-
-### 8.2. Kiểm tra quy chuẩn mã nguồn (Linting)
-
-- **Kiểm tra linter Backend (Oxlint):**
-  ```bash
-  docker compose exec -w /app/backend backend pnpm run lint
-  ```
-- **Kiểm tra linter Frontend (ESLint):**
-  ```bash
-  docker compose exec -w /app/frontend frontend pnpm run lint
-  ```
-
-### 8.3. Kiểm tra Build ứng dụng
-
-- **Build kiểm thử Backend:**
-  ```bash
-  docker compose exec -w /app/backend backend pnpm run build
-  ```
-- **Build kiểm thử Frontend:**
-  ```bash
-  docker compose exec -w /app/frontend frontend pnpm run build
-  ```
-
----
-
-## 9. Quản trị Docker & Khắc phục sự cố (Troubleshooting)
-
-### 9.1. Các lệnh quản lý Docker thường dùng
-
-| Thao tác | Lệnh thực thi (Môi trường Local Docker DB) |
+| Thao tác | Lệnh thực thi |
 |---|---|
 | **Xem logs thời gian thực toàn bộ hệ thống** | `docker compose logs -f` |
 | **Xem logs riêng Backend** | `docker compose logs -f backend` |
 | **Xem logs riêng Frontend** | `docker compose logs -f frontend` |
-| **Xem logs riêng PostgreSQL** | `docker compose logs -f postgres` |
 | **Khởi động lại các container** | `docker compose restart` |
 | **Dừng các container** | `docker compose stop` |
-| **Dừng và gỡ bỏ container, giữ nguyên volume dữ liệu** | `docker compose down` |
+| **Dừng và gỡ bỏ container, giữ nguyên volume** | `docker compose down` |
+| **Đặt lại CSDL hoàn toàn (Reset DB)** | `docker compose down -v && docker compose up -d --build` |
 
-### 9.2. Hướng dẫn xử lý các lỗi thường gặp
-
-#### 1. Lỗi: Docker Daemon chưa chạy (`failed to connect to the docker API`)
-- **Nguyên nhân:** Ứng dụng Docker Desktop chưa được mở hoặc dịch vụ Docker engine bị dừng.
-- **Khắc phục:** Mở ứng dụng Docker Desktop trên máy, đợi 30 giây đến khi biểu tượng cá voi chuyển sang màu xanh lá báo hiệu Docker đã sẵn sàng, sau đó thực thi lại lệnh.
-
-#### 2. Lỗi: Xung đột cổng kết nối (`port is already allocated` - 3000, 3001 hoặc 5432)
-- **Nguyên nhân:** Cổng 3000 (Frontend), 3001 (Backend) hoặc 5432 (PostgreSQL) đang bị chiếm dụng bởi ứng dụng khác hoặc dịch vụ PostgreSQL cài trực tiếp trên máy host.
-- **Khắc phục:**
-  - *Trên Windows:* Kiểm tra tiến trình đang chiếm port:
-    ```powershell
-    netstat -ano | findstr :3000
-    netstat -ano | findstr :5432
-    ```
-    Nếu dịch vụ PostgreSQL của Windows đang chạy, hãy tạm dừng: `net stop postgresql-x64-17` (hoặc phiên bản tương ứng).
-  - Hoặc chỉnh sửa port mapping bên trái trong `docker-compose.yml` (ví dụ: `"3002:3000"`).
-
-#### 3. Lỗi: Không thể kết nối cơ sở dữ liệu (`Can't reach database server at postgres:5432`)
-- **Nguyên nhân:** Container `postgres` chưa hoàn tất khởi động hoặc chưa đạt trạng thái `healthy` khi backend cố gắng kết nối.
-- **Khắc phục:**
-  - Kiểm tra trạng thái postgres: `docker compose ps`
-  - Xem log chi tiết: `docker compose logs postgres`
-  - Đợi khoảng 10-15 giây rồi khởi động lại backend: `docker compose restart backend`
-
-#### 4. Lỗi: Chưa áp dụng migration trước khi seed dữ liệu
-- **Nguyên nhân:** Bảng trong CSDL chưa được khởi tạo dẫn tới script seed báo lỗi quan hệ không tồn tại (`relation does not exist`).
-- **Khắc phục:** Luôn chạy lệnh `migrate deploy` trước khi chạy `db seed`:
-  ```bash
-  docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
-  docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
-  ```
-
-#### 5. Lỗi: Thiếu biến môi trường bắt buộc
-- **Nguyên nhân:** File `.env` chưa được tạo hoặc để trống biến `POSTGRES_PASSWORD`, `JWT_ACCESS_SECRET`.
-- **Khắc phục:** Kiểm tra file `.env` đã có đầy đủ các biến mẫu như mục 4.2 chưa, sau đó chạy lại lệnh `docker compose up -d`.
-
-#### 6. Lỗi: Chặn truy vấn trình duyệt do CORS (`Access-Control-Allow-Origin`)
-- **Nguyên nhân:** URL Frontend gọi vào không khớp với danh sách cho phép của Backend.
-- **Khắc phục:** Kiểm tra biến `FRONTEND_BASE_URL` trong file `.env` của backend phải đặt là `http://localhost:3000`. Backend đã được cấu hình tự động cho phép `http://localhost:3000`, `http://127.0.0.1:3000` và domain Vercel.
-
-#### 7. Lỗi: Chuyển hướng thanh toán VNPay không quay về giỏ hàng
-- **Nguyên nhân:** Cấu hình `VNPAY_RETURN_URL` trỏ sai địa chỉ.
-- **Khắc phục:** Đảm bảo `VNPAY_RETURN_URL` trong `.env` là `http://localhost:3001/payments/vnpay/return`. Endpoint này sẽ nhận kết quả từ VNPay và tự động chuyển hướng người dùng về trang xác nhận frontend `http://localhost:3000/checkout/confirmation`.
-
-### 9.3. Đặt lại toàn bộ dữ liệu CSDL (Database Reset)
-
-> **Cảnh báo:** Thao tác này sẽ xóa toàn bộ dữ liệu hiện có trong CSDL local để tái thiết lập từ đầu. Chỉ thực hiện khi bạn muốn làm sạch môi trường test.
-
-```bash
-# 1. Dừng và xóa toàn bộ container cùng volume dữ liệu postgres_data
-docker compose down -v
-
-# 2. Khởi chạy lại hệ thống mới hoàn toàn
-docker compose up -d --build
-
-# 3. Đồng bộ lại cấu trúc và nạp lại dữ liệu seed
-docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts migrate deploy
-docker compose exec -w /app/backend backend pnpm exec prisma --config prisma7.config.ts db seed
-```
-
----
-
-## 10. So sánh môi trường Local & Production
-
-| Tiêu chí | Môi trường Phát triển (Local Development) | Môi trường Vận hành thực tế (Production) |
-|---|---|---|
-| **Cơ chế triển khai** | Docker Compose (`docker compose up`) | Vercel (Frontend) & Render (Backend) |
-| **Cơ sở dữ liệu** | PostgreSQL 17 Docker Container (hoặc Neon Cloud) | Neon Serverless PostgreSQL Cloud |
-| **Frontend URL** | `http://localhost:3000` | `https://brew-lite-tau.vercel.app` |
-| **Backend API URL** | `http://localhost:3001` | `https://your-backend.onrender.com` |
-| **Health Check Endpoint** | `http://localhost:3001/health` | `https://your-backend.onrender.com/health` |
-| **Mã nguồn Repository** | `https://github.com/dkhoaaaaa/brew-lite` | `https://github.com/dkhoaaaaa/brew-lite` |
-| **Cơ chế Hot-Reload** | Hỗ trợ cho cả Next.js (Turbopack) và NestJS (Watch) | Build tối ưu tĩnh, chạy node dist mode |
-| **Yêu cầu cài đặt** | Chỉ cần Docker Desktop & Git | Tự động CI/CD qua GitHub Webhooks |
+### 11.2. Xử lý sự cố thường gặp
+- **Xung đột cổng (Port 3000, 3001 hoặc 5432):** Dùng lệnh `netstat -ano | findstr :<port>` (Windows) để tìm và dừng ứng dụng đang chiếm port, hoặc sửa port mapping trong `docker-compose.yml`.
+- **Lỗi chưa migrate mà đã seed:** Luôn chạy `migrate deploy` thành công trước khi chạy `db seed`.
+- **Lỗi CORS:** Đảm bảo biến `FRONTEND_BASE_URL` trong file `.env` của backend chứa đúng origin gọi tới.
