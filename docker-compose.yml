@@ -1,4 +1,27 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-brewlite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_local_postgres_password}
+      POSTGRES_DB: ${POSTGRES_DB:-brewlite}
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: .
@@ -9,9 +32,9 @@ services:
       NODE_ENV: development
       PORT: 3000
 
-      # Neon PostgreSQL / Cloud or Local fallback
-      DATABASE_URL: ${DATABASE_URL:-${LOCAL_DATABASE_URL:-}}
-      DIRECT_URL: ${DIRECT_URL:-${LOCAL_DIRECT_URL:-}}
+      # Kết nối trực tiếp vào container PostgreSQL local khi chạy bằng Docker Compose
+      DATABASE_URL: ${LOCAL_DATABASE_URL:-postgresql://${POSTGRES_USER:-brewlite}:${POSTGRES_PASSWORD:-your_local_postgres_password}@postgres:5432/${POSTGRES_DB:-brewlite}?schema=public}
+      DIRECT_URL: ${LOCAL_DIRECT_URL:-postgresql://${POSTGRES_USER:-brewlite}:${POSTGRES_PASSWORD:-your_local_postgres_password}@postgres:5432/${POSTGRES_DB:-brewlite}?schema=public}
 
       # Authentication
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
@@ -35,6 +58,10 @@ services:
       - .:/app
       - root_node_modules:/app/node_modules
       - backend_node_modules:/app/backend/node_modules
+
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
@@ -61,3 +88,4 @@ volumes:
   root_node_modules:
   frontend_node_modules:
   backend_node_modules:
+  postgres_data:

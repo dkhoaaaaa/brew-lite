@@ -40,4 +40,5 @@ ENV NODE_ENV=production
 EXPOSE 3000
 
 # Start NestJS in production mode
-CMD ["pnpm", "--dir", "backend", "start:prod"]
+# Run safe migrations and start NestJS in production mode
+CMD ["sh", "-c", "pnpm --dir backend exec prisma --config prisma7.config.ts migrate deploy && pnpm --dir backend start:prod"]
