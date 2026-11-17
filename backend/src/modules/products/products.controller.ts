@@ -21,7 +21,7 @@ export class ProductsController {
       throw new BadRequestException("Page must be a positive integer.");
     }
 
-    const limit = 5; // Cố định 5 sản phẩm / trang theo yêu cầu đồ án
+    const limit = 8;
     return await this.productsService.findAllPaginated(pageNumber, limit);
   }
 
