@@ -2,6 +2,9 @@ name: BrewLite CI
 
 on:
   pull_request:
+    branches:
+      - main
+      - develop
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
@@ -14,22 +17,22 @@ concurrency:
 
 jobs:
   ci:
-    name: Install - Lint - Unit Test - Build
+    name: Install -> Lint -> Unit Test -> Build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       DATABASE_URL: postgresql://brewlite:brewlite@localhost:5432/brewlite?schema=public
       DIRECT_URL: postgresql://brewlite:brewlite@localhost:5432/brewlite?schema=public
-      JWT_ACCESS_SECRET: ci-only-not-a-real-secret
-      JWT_REFRESH_SECRET: ci-only-not-a-real-secret
+      JWT_ACCESS_SECRET: ci-dummy-access-secret-brewlite-key
+      JWT_REFRESH_SECRET: ci-dummy-refresh-secret-brewlite-key
       NEXT_TELEMETRY_DISABLED: '1'
       NEXT_PUBLIC_API_URL: http://localhost:3001
 
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup pnpm from package.json
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -40,21 +43,33 @@ jobs:
           node-version: '22'
           cache: pnpm
 
+      # ==========================================
+      # Giai đoạn 1: Install
+      # ==========================================
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
+      - name: Generate Prisma Client
         run: pnpm --dir backend run prisma:generate
 
+      # ==========================================
+      # Giai đoạn 2: Lint
+      # ==========================================
       - name: Lint backend (Oxlint)
         run: pnpm --dir backend run lint
 
       - name: Lint frontend (ESLint)
         run: pnpm --dir frontend run lint
 
+      # ==========================================
+      # Giai đoạn 3: Unit Test
+      # ==========================================
       - name: Unit test backend (Vitest)
         run: pnpm --dir backend run test
 
+      # ==========================================
+      # Giai đoạn 4: Build
+      # ==========================================
       - name: Build backend (NestJS)
         run: pnpm --dir backend run build
 
