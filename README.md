@@ -18,11 +18,11 @@ Hệ thống được thiết kế theo kiến trúc **Monorepo** dùng chung du
 | Thành phần | Môi trường / Nền tảng | Đường dẫn truy cập (Production URLs) | Trạng thái |
 |---|---|---|---|
 | **Giao diện người dùng (Frontend)** | Vercel (Next.js 16) | [https://brew-lite-tau.vercel.app](https://brew-lite-tau.vercel.app) | Live |
-| **Backend REST API** | Render (NestJS 12) | [https://brew-lite-backend.onrender.com](https://brew-lite-backend.onrender.com) | Live |
-| **Kiểm tra sức khỏe (Health Check)** | Render API Endpoint | [https://brew-lite-backend.onrender.com/health](https://brew-lite-backend.onrender.com/health) | Live |
+| **Backend REST API** | Render (NestJS 12) | [https://brew-lite-backend.onrender.com](https://brew-lite-a4jv.onrender.com) | Live |
+| **Kiểm tra sức khỏe (Health Check)** | Render API Endpoint | [https://brew-lite-backend.onrender.com/health](https://brew-lite-a4jv.onrender.com/health) | Live |
 | **Cơ sở dữ liệu đám mây** | Neon PostgreSQL 17 | Serverless Pooled & Direct Connections | Live |
 | **Phiên bản phát hành (Tag / Release)** | GitHub Releases | `v1.0.0` ([Xem Release Notes](https://github.com/dkhoaaaaa/brew-lite/releases)) | v1.0.0 |
-| **Video Demo End-to-End** | Google Drive / YouTube | [Xem Video Demo](https://drive.google.com/file/d/your-video-id/view) | Sẵn sàng |
+| **Video Demo End-to-End** | Google Drive / YouTube | [Xem Video Demo](https://drive.google.com/file/d/1iHT4lmRY7KDPE1H1Fg6_ofTUbZI9RrEb/view?usp=sharing) | Sẵn sàng |
 
 ---
 
@@ -391,12 +391,12 @@ git push origin main
 
 ### 9.3. Video Demo trực tiếp luồng End-to-End
 
-- **Đường dẫn xem video:** [Nhấp vào đây để xem Video Demo (Google Drive)](https://drive.google.com/file/d/your-video-id/view) *(Hoặc mở file lưu trữ nội bộ: `docs/Bản demo end to end.mp4`)*
+- **Đường dẫn xem video:** [Nhấp vào đây để xem Video Demo (Google Drive)](https://drive.google.com/file/d/1iHT4lmRY7KDPE1H1Fg6_ofTUbZI9RrEb/view?usp=sharing)
 - **Nội dung bao gồm trong video demo:**
-  1. **Khám phá thực đơn:** Lọc danh mục món Cà phê / Trà / Bánh và tìm kiếm thời gian thực.
+  1. **Khám phá thực đơn:** Lọc danh mục món Cà phê / Trà / Bánh.
   2. **Tùy chỉnh món (Product Customization):** Chọn size S/M/L, chọn topping và điều chỉnh tỷ lệ đá/đường.
-  3. **Quản lý giỏ hàng:** Cập nhật số lượng món, xóa món và xem tổng tiền tự động.
-  4. **Đăng nhập & Đặt hàng:** Sử dụng tài khoản demo, nhập địa chỉ nhận hàng và áp dụng mã giảm giá voucher.
+  3. **Quản lý giỏ hàng:** Cập nhật số lượng món và xem tổng tiền tự động.
+  4. **Đăng nhập & Đặt hàng:** Sử dụng tài khoản demo và áp dụng mã giảm giá voucher.
   5. **Thanh toán trực tuyến:** Chuyển hướng sang cổng thanh toán VNPay Sandbox, thực hiện thanh toán bằng thẻ ATM nội địa NCB.
   6. **Kiểm tra kết quả:** Nhận thông báo giao dịch thành công, kiểm tra đơn hàng tại trang Lịch sử đơn hàng và cập nhật tồn kho nguyên liệu.
 
