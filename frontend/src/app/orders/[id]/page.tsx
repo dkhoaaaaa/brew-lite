@@ -327,6 +327,7 @@ function OrderDetailsContent() {
   };
 
   const isPayable = order.status === "PENDING" || order.status === "PAYMENT_FAILED";
+  const isCancellable = isPayable || order.status === "PAID";
   const latestPayment = order.payments && order.payments.length > 0 ? order.payments[0] : null;
 
   return (
@@ -518,37 +519,48 @@ function OrderDetailsContent() {
                 )}
               </div>
 
-              {/* Nếu đơn đang PENDING hoặc PAYMENT_FAILED, hiển thị nút thanh toán ngay */}
-              {isPayable && (
+              {/* Nếu đơn đang PENDING, PAYMENT_FAILED hoặc PAID (chưa pha chế), hiển thị nút thao tác tương ứng */}
+              {(isPayable || isCancellable) && (
                 <div className="mt-6 pt-5 border-t border-[#F0EAE1] flex flex-col gap-2.5">
-                  <p
-                    className={`text-xs ${
-                      order.status === "PAYMENT_FAILED" ? "text-rose-700" : "text-amber-800"
-                    }`}
-                  >
-                    {order.status === "PAYMENT_FAILED"
-                      ? "Lần thanh toán trước thất bại. Bạn có thể thử lại ngay bây giờ hoặc hủy đơn."
-                      : "Đơn hàng đang chờ thanh toán và sẽ tự hủy khi hết thời hạn."}
-                  </p>
-                  <Link
-                    className="inline-flex items-center justify-center bg-[#38291E] hover:bg-[#241A13] !text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors w-full text-center shadow-xs"
-                    href={`/checkout?orderId=${order.id}`}
-                    style={{ color: "#ffffff" }}
-                  >
-                    <span className="text-white font-semibold">
-                      {order.status === "PAYMENT_FAILED"
-                        ? "Thử lại thanh toán ngay"
-                        : "Tiếp tục thanh toán ngay"}
-                    </span>
-                  </Link>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors w-full cursor-pointer"
-                    onClick={handleCancel}
-                    disabled={cancelling}
-                  >
-                    {cancelling ? "Đang hủy..." : "Hủy đơn hàng"}
-                  </button>
+                  {isPayable && (
+                    <>
+                      <p
+                        className={`text-xs ${
+                          order.status === "PAYMENT_FAILED" ? "text-rose-700" : "text-amber-800"
+                        }`}
+                      >
+                        {order.status === "PAYMENT_FAILED"
+                          ? "Lần thanh toán trước thất bại. Bạn có thể thử lại ngay bây giờ hoặc hủy đơn."
+                          : "Đơn hàng đang chờ thanh toán và sẽ tự hủy khi hết thời hạn."}
+                      </p>
+                      <Link
+                        className="inline-flex items-center justify-center bg-[#38291E] hover:bg-[#241A13] !text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors w-full text-center shadow-xs"
+                        href={`/checkout?orderId=${order.id}`}
+                        style={{ color: "#ffffff" }}
+                      >
+                        <span className="text-white font-semibold">
+                          {order.status === "PAYMENT_FAILED"
+                            ? "Thử lại thanh toán ngay"
+                            : "Tiếp tục thanh toán ngay"}
+                        </span>
+                      </Link>
+                    </>
+                  )}
+                  {order.status === "PAID" && (
+                    <p className="text-xs text-emerald-800">
+                      Đơn hàng đã thanh toán thành công. Bạn có thể hủy đơn nếu quán chưa bắt đầu pha chế.
+                    </p>
+                  )}
+                  {isCancellable && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors w-full cursor-pointer"
+                      onClick={handleCancel}
+                      disabled={cancelling}
+                    >
+                      {cancelling ? "Đang hủy..." : "Hủy đơn hàng"}
+                    </button>
+                  )}
                 </div>
               )}
 

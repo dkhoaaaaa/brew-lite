@@ -511,25 +511,52 @@ async function main() {
   }
 
   // 7. Seed Loyalty & Promotions
-  const rewardName = "Giảm 10.000đ";
-  const rewardData = {
-    description: "Đổi điểm tích lũy để nhận ưu đãi.",
-    pointsCost: 100,
-    discountType: "FIXED" as const,
-    discountValue: "10000",
-    minOrderAmount: "30000",
-    maxDiscountAmount: "10000",
-    validDays: 30,
-    isActive: true,
-  };
-  const reward = await prisma.loyaltyReward.findFirst({
-    where: { name: rewardName },
-    orderBy: { id: "asc" },
-  });
-  if (reward) {
-    await prisma.loyaltyReward.update({ where: { id: reward.id }, data: rewardData });
-  } else {
-    await prisma.loyaltyReward.create({ data: { name: rewardName, ...rewardData } });
+  const loyaltyRewardsData = [
+    {
+      name: "Giảm 10.000đ",
+      description: "Đổi 100 điểm tích lũy để nhận voucher 10.000đ.",
+      pointsCost: 100,
+      discountType: "FIXED" as const,
+      discountValue: "10000",
+      minOrderAmount: "30000",
+      maxDiscountAmount: "10000",
+      validDays: 30,
+      isActive: true,
+    },
+    {
+      name: "Giảm 30.000đ",
+      description: "Đổi 250 điểm tích lũy để nhận voucher 30.000đ.",
+      pointsCost: 250,
+      discountType: "FIXED" as const,
+      discountValue: "30000",
+      minOrderAmount: "50000",
+      maxDiscountAmount: "30000",
+      validDays: 30,
+      isActive: true,
+    },
+    {
+      name: "Giảm 70.000đ",
+      description: "Đổi 500 điểm tích lũy để nhận voucher 70.000đ.",
+      pointsCost: 500,
+      discountType: "FIXED" as const,
+      discountValue: "70000",
+      minOrderAmount: "100000",
+      maxDiscountAmount: "70000",
+      validDays: 30,
+      isActive: true,
+    },
+  ];
+
+  for (const item of loyaltyRewardsData) {
+    const reward = await prisma.loyaltyReward.findFirst({
+      where: { name: item.name },
+      orderBy: { id: "asc" },
+    });
+    if (reward) {
+      await prisma.loyaltyReward.update({ where: { id: reward.id }, data: item });
+    } else {
+      await prisma.loyaltyReward.create({ data: item });
+    }
   }
 
   const startAt = new Date("2026-01-01T00:00:00+07:00");

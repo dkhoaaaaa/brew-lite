@@ -15,42 +15,28 @@ export interface RewardTier {
   minOrderAmount: number;
 }
 
-export const REWARD_TIERS: RewardTier[] = [
-  {
-    id: "TIER_200",
-    pointsCost: 200,
-    discountValue: 10000,
-    name: "Giảm 10.000 VNĐ",
-    description: "Áp dụng cho mọi đơn hàng tại BrewLite.",
-    minOrderAmount: 0,
-  },
-  {
-    id: "TIER_500",
-    pointsCost: 500,
-    discountValue: 30000,
-    name: "Giảm 30.000 VNĐ",
-    description: "Áp dụng cho mọi đơn hàng tại BrewLite.",
-    minOrderAmount: 0,
-  },
-  {
-    id: "TIER_1000",
-    pointsCost: 1000,
-    discountValue: 70000,
-    name: "Giảm 70.000 VNĐ",
-    description: "Áp dụng cho mọi đơn hàng tại BrewLite.",
-    minOrderAmount: 0,
-  },
-];
-
 @Injectable()
 export class LoyaltyService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Lấy danh sách các mức quy đổi voucher có thể đổi bằng điểm thưởng.
+   * Truy vấn trực tiếp từ bảng loyalty_rewards trong database.
    */
-  getRewardTiers(): RewardTier[] {
-    return REWARD_TIERS;
+  async getRewardTiers(): Promise<RewardTier[]> {
+    const dbRewards = await this.prisma.loyaltyReward.findMany({
+      where: { isActive: true },
+      orderBy: { pointsCost: "asc" },
+    });
+
+    return dbRewards.map((r) => ({
+      id: r.id.toString(),
+      pointsCost: r.pointsCost,
+      discountValue: Number(r.discountValue),
+      name: r.name,
+      description: r.description ?? "",
+      minOrderAmount: Number(r.minOrderAmount),
+    }));
   }
 
   /**
@@ -58,10 +44,26 @@ export class LoyaltyService {
    * Chạy trong Transaction: kiểm tra điểm, trừ điểm và tạo bản ghi Promotion thuộc về user.
    */
   async redeemVoucher(userId: bigint, tierId: string) {
-    const tier = REWARD_TIERS.find((t) => t.id === tierId);
-    if (!tier) {
+    if (!/^\d+$/.test(tierId)) {
       throw new BadRequestException("Mức quy đổi không hợp lệ.");
     }
+
+    const reward = await this.prisma.loyaltyReward.findUnique({
+      where: { id: BigInt(tierId) },
+    });
+
+    if (!reward || !reward.isActive) {
+      throw new BadRequestException("Mức quy đổi không hợp lệ.");
+    }
+
+    const tier = {
+      id: reward.id.toString(),
+      pointsCost: reward.pointsCost,
+      discountValue: Number(reward.discountValue),
+      name: reward.name,
+      minOrderAmount: Number(reward.minOrderAmount),
+      rewardId: reward.id,
+    };
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -109,6 +111,7 @@ export class LoyaltyService {
           usedCount: 0,
           isActive: true,
           ownerUserId: userId,
+          rewardId: tier.rewardId ?? null,
         },
       }),
     ]);
@@ -193,6 +196,7 @@ export class LoyaltyService {
       }),
       this.prisma.promotion.findMany({
         where: { ownerUserId: userId },
+        include: { reward: true },
         orderBy: { id: "desc" },
       }),
     ]);
@@ -221,9 +225,13 @@ export class LoyaltyService {
 
     // Tiêu điểm từ đổi voucher
     for (const voucher of redeemedVouchers) {
-      // Tìm số điểm tương ứng từ giá trị giảm
-      const tier = REWARD_TIERS.find((t) => t.discountValue === Number(voucher.discountValue));
-      const pointsCost = tier ? tier.pointsCost : 200;
+      const pointsCost =
+        (voucher as any).reward?.pointsCost ??
+        (Number(voucher.discountValue) >= 70000
+          ? 500
+          : Number(voucher.discountValue) >= 30000
+            ? 250
+            : 100);
 
       historyItems.push({
         id: `redeem-${voucher.id}`,

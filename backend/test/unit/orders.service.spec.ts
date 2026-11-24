@@ -99,11 +99,13 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     },
     payment: {
       findUnique: vi.fn().mockResolvedValue(null),
+      findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: 1n }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     orderStatusHistory: {
       create: vi.fn().mockResolvedValue({ id: 1n }),
+      findFirst: vi.fn().mockResolvedValue(null),
     },
     $transaction: vi.fn().mockImplementation(async (arg) => {
       if (Array.isArray(arg)) {
@@ -843,18 +845,153 @@ describe("Task 10.2 - Idempotent Order Creation & Payment", () => {
     expect(() => validateStateTransition("COMPLETED", "PENDING")).toThrow(BadRequestException);
   });
 
-  it("chặn hủy đơn khi đơn đã PAID hoặc COMPLETED", async () => {
+  it("cho phép hủy đơn khi đơn ở trạng thái PAID và hoàn điểm, hoàn voucher, đánh dấu hoàn tiền", async () => {
+    const userUpdateMock = vi.fn().mockResolvedValue({ id: 1n });
+    const promoUpdateMock = vi.fn().mockResolvedValue({ id: 100n });
+    const promoUsageDeleteMock = vi.fn().mockResolvedValue({ count: 1 });
+    const paymentUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+
+    const currentPaidOrder = {
+      id: 10n,
+      userId: 1n,
+      status: "PAID",
+      pointsEarned: 100,
+      promotionId: 100n,
+      createdAt: new Date(),
+      statusHistory: [{ newStatus: "PAID", changedAt: new Date() }],
+      payments: [{ status: "SUCCESS", paidAt: new Date() }],
+    };
+
+    const cancelledOrder = {
+      id: 10n,
+      orderCode: "BL-CANCEL-PAID",
+      status: "CANCELLED",
+      subtotal: money(50000),
+      total: money(50000),
+      orderItems: [],
+      payments: [],
+      statusHistory: [],
+    };
+
+    const tx = {
+      $queryRaw: vi.fn(),
+      order: {
+        findUnique: vi.fn()
+          .mockResolvedValueOnce(currentPaidOrder)
+          .mockResolvedValueOnce(cancelledOrder),
+        update: vi.fn().mockResolvedValue(cancelledOrder),
+      },
+      orderItem: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: 1n, loyaltyPoints: 150 }),
+        update: userUpdateMock,
+      },
+      promotion: {
+        findUnique: vi.fn().mockResolvedValue({ id: 100n, usedCount: 2 }),
+        update: promoUpdateMock,
+      },
+      promotionUsage: {
+        deleteMany: promoUsageDeleteMock,
+      },
+      product: { update: vi.fn() },
+      topping: { update: vi.fn() },
+      payment: { updateMany: paymentUpdateManyMock },
+      orderStatusHistory: { create: vi.fn().mockResolvedValue({ id: 1n }) },
+    };
+
     const prisma = buildPrisma({
       order: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 10n,
-          userId: 1n,
-          status: "PAID",
-        }),
+        findUnique: vi.fn().mockResolvedValue(currentPaidOrder),
       },
+      payment: {
+        findFirst: vi.fn().mockResolvedValue({ paidAt: new Date() }),
+      },
+      orderStatusHistory: {
+        findFirst: vi.fn().mockResolvedValue({ changedAt: new Date() }),
+      },
+      $transaction: vi.fn(async (callback) => callback(tx)),
     });
-    const service = new OrdersService(prisma as never);
 
+    const service = new OrdersService(prisma as never);
+    const result = await service.cancelOrder(10n, 1n);
+
+    expect(result.status).toBe("CANCELLED");
+    // Kiểm tra hoàn điểm tích lũy: 150 - 100 = 50
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 1n },
+      data: { loyaltyPoints: 50 },
+    });
+    // Kiểm tra hoàn voucher: usedCount giảm 1
+    expect(promoUpdateMock).toHaveBeenCalledWith({
+      where: { id: 100n },
+      data: { usedCount: 1 },
+    });
+    expect(promoUsageDeleteMock).toHaveBeenCalledWith({
+      where: { orderId: 10n },
+    });
+    // Kiểm tra cập nhật payment hoàn tiền
+    expect(paymentUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orderId: 10n, status: "SUCCESS" },
+        data: expect.objectContaining({
+          refundedAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("chặn hủy đơn khi đơn đã chuyển sang PREPARING, READY hoặc COMPLETED", async () => {
+    for (const status of ["PREPARING", "READY", "COMPLETED"]) {
+      const prisma = buildPrisma({
+        order: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 10n,
+            userId: 1n,
+            status,
+          }),
+        },
+      });
+      const service = new OrdersService(prisma as never);
+
+      await expect(service.cancelOrder(10n, 1n)).rejects.toThrow(BadRequestException);
+    }
+  });
+
+  it("chặn hủy đơn nếu barista vừa nhận đơn sang PREPARING trong lúc xử lý hủy (Race Condition)", async () => {
+    const currentPaidOrder = {
+      id: 10n,
+      userId: 1n,
+      status: "PAID",
+      createdAt: new Date(),
+    };
+    // Giả lập trong transaction, barista vừa chuyển sang PREPARING
+    const concurrentOrder = {
+      id: 10n,
+      userId: 1n,
+      status: "PREPARING",
+      createdAt: new Date(),
+    };
+
+    const tx = {
+      $queryRaw: vi.fn(),
+      order: {
+        findUnique: vi.fn().mockResolvedValue(concurrentOrder),
+      },
+    };
+
+    const prisma = buildPrisma({
+      order: {
+        findUnique: vi.fn().mockResolvedValue(currentPaidOrder),
+      },
+      payment: {
+        findFirst: vi.fn().mockResolvedValue({ paidAt: new Date() }),
+      },
+      $transaction: vi.fn(async (callback) => callback(tx)),
+    });
+
+    const service = new OrdersService(prisma as never);
     await expect(service.cancelOrder(10n, 1n)).rejects.toThrow(BadRequestException);
   });
 
