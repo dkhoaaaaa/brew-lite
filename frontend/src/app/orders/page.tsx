@@ -272,6 +272,7 @@ export default function OrdersPage() {
           <div className="flex flex-col gap-5">
             {orders.map((order) => {
               const isPayable = order.status === "PENDING" || order.status === "PAYMENT_FAILED";
+              const isCancellable = isPayable || order.status === "PAID";
               const totalItemsCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
 
               return (
@@ -381,24 +382,24 @@ export default function OrdersPage() {
 
                     <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       {isPayable && (
-                        <>
-                          <Link
-                            className="inline-flex items-center justify-center flex-1 sm:flex-initial min-h-[40px] bg-[#38291E] hover:bg-[#241A13] !text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-xs text-center"
-                            href={`/checkout?orderId=${order.id}`}
-                            style={{ color: "#ffffff" }}
-                          >
-                            <span className="text-white font-semibold">
-                              {order.status === "PAYMENT_FAILED" ? "Thử lại thanh toán" : "Thanh toán ngay"}
-                            </span>
-                          </Link>
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-center min-h-[40px] bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl transition-colors cursor-pointer"
-                            onClick={() => handleCancelOrder(order.id)}
-                          >
-                            Hủy đơn
-                          </button>
-                        </>
+                        <Link
+                          className="inline-flex items-center justify-center flex-1 sm:flex-initial min-h-[40px] bg-[#38291E] hover:bg-[#241A13] !text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-xs text-center"
+                          href={`/checkout?orderId=${order.id}`}
+                          style={{ color: "#ffffff" }}
+                        >
+                          <span className="text-white font-semibold">
+                            {order.status === "PAYMENT_FAILED" ? "Thử lại thanh toán" : "Thanh toán ngay"}
+                          </span>
+                        </Link>
+                      )}
+                      {isCancellable && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center min-h-[40px] bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl transition-colors cursor-pointer"
+                          onClick={() => handleCancelOrder(order.id)}
+                        >
+                          Hủy đơn
+                        </button>
                       )}
                       <Link
                         className="inline-flex items-center justify-center flex-1 sm:flex-initial min-h-[40px] bg-white border border-[#DED6CB] !text-[#30251D] hover:bg-[#F5EFE6] hover:border-[#76513B] text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-2xs text-center"

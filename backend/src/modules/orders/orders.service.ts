@@ -1,13 +1,15 @@
-import { createHash, randomBytes } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
-  OnModuleInit,
   OnModuleDestroy,
+  OnModuleInit,
 } from "@nestjs/common";
+import { createHash, randomBytes } from "node:crypto";
+import { PrismaService } from "../../prisma/prisma.service.js";
+import { CreateOrderDto } from "./dto/create-order.dto.js";
 
 const STATUS_PROGRESSION: Record<string, number> = {
   PAID: 0,
@@ -19,7 +21,7 @@ const STATUS_PROGRESSION: Record<string, number> = {
 export const ALLOWED_STATE_TRANSITIONS: Record<string, string[]> = {
   PENDING: ["PAID", "PAYMENT_FAILED", "CANCELLED"],
   PAYMENT_FAILED: ["PAID", "CANCELLED"],
-  PAID: ["PREPARING", "READY", "COMPLETED"],
+  PAID: ["PREPARING", "READY", "COMPLETED", "CANCELLED"],
   PREPARING: ["READY", "COMPLETED"],
   READY: ["COMPLETED"],
   COMPLETED: [],
@@ -47,8 +49,6 @@ export function determineStatusByElapsed(elapsedMs: number): "PAID" | "PREPARING
     return "COMPLETED";
   }
 }
-import { PrismaService } from "../../prisma/prisma.service.js";
-import { CreateOrderDto } from "./dto/create-order.dto.js";
 
 function getPendingTtlMs(): number {
   const minutes = Number(process.env.PAYMENT_TTL_MINUTES ?? 5);
@@ -1179,27 +1179,37 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Hủy đơn hàng theo luồng PENDING -> CANCELLED hoặc PAYMENT_FAILED -> CANCELLED.
+   * Hủy đơn hàng theo luồng PENDING -> CANCELLED, PAYMENT_FAILED -> CANCELLED, hoặc PAID -> CANCELLED.
+   * Chặn tuyệt đối việc hủy đơn khi đã chuyển sang PREPARING, READY, hoặc COMPLETED.
    * Đơn sau khi hủy vẫn được lưu giữ trong database và hiển thị ở mục "Đã hủy".
    */
   async cancelOrder(orderId: bigint, userId: bigint) {
-    const order = await this.prisma.order.findUnique({
+    const initialOrder = await this.prisma.order.findUnique({
       where: { id: orderId },
+      include: {
+        payments: { orderBy: { createdAt: "desc" } },
+        statusHistory: { orderBy: { changedAt: "asc" } },
+      },
     });
 
-    if (!order) {
+    if (!initialOrder) {
       throw new NotFoundException("Đơn hàng không tồn tại.");
     }
 
-    if (order.userId !== userId) {
+    if (initialOrder.userId !== userId) {
       throw new ForbiddenException("Bạn không có quyền hủy đơn hàng này.");
     }
+
+    // Làm mới tiến trình trạng thái thời gian (nếu đơn PAID đã quá 1 phút sang PREPARING)
+    const order = (await this.syncOrderState(initialOrder)) ?? initialOrder;
 
     // State Machine validation
     validateStateTransition(order.status, "CANCELLED");
 
-    if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED") {
-      throw new BadRequestException("Chỉ có thể hủy đơn hàng đang chờ thanh toán hoặc thanh toán lỗi.");
+    if (order.status !== "PENDING" && order.status !== "PAYMENT_FAILED" && order.status !== "PAID") {
+      throw new BadRequestException(
+        "Chỉ có thể hủy đơn hàng đang chờ thanh toán, thanh toán lỗi hoặc chưa bắt đầu pha chế.",
+      );
     }
 
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
@@ -1210,15 +1220,69 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         throw new ForbiddenException("Bạn không có quyền hủy đơn hàng này.");
       }
       validateStateTransition(current.status, "CANCELLED");
-      if (current.status !== "PENDING" && current.status !== "PAYMENT_FAILED") {
-        throw new BadRequestException("Chỉ có thể hủy đơn hàng đang chờ thanh toán hoặc thanh toán lỗi.");
+      if (current.status !== "PENDING" && current.status !== "PAYMENT_FAILED" && current.status !== "PAID") {
+        throw new BadRequestException(
+          "Chỉ có thể hủy đơn hàng đang chờ thanh toán, thanh toán lỗi hoặc chưa bắt đầu pha chế.",
+        );
       }
 
       await this.restoreOrderStock(tx, current.id);
+
+      // Nếu đơn đã thanh toán (PAID), thực hiện hoàn điểm tích lũy, voucher và cập nhật payment
+      if (current.status === "PAID") {
+        // 1. Trừ lại điểm thưởng loyalty points đã cộng khi thanh toán thành công
+        if (current.pointsEarned > 0) {
+          const user = await tx.user.findUnique({
+            where: { id: current.userId },
+            select: { loyaltyPoints: true },
+          });
+          if (user) {
+            const newPoints = Math.max(0, user.loyaltyPoints - current.pointsEarned);
+            await tx.user.update({
+              where: { id: current.userId },
+              data: { loyaltyPoints: newPoints },
+            });
+          }
+        }
+
+        // 2. Hoàn lại voucher khuyến mãi nếu đơn có sử dụng promotion
+        if (current.promotionId) {
+          const promo = await tx.promotion.findUnique({
+            where: { id: current.promotionId },
+            select: { usedCount: true },
+          });
+          if (promo) {
+            await tx.promotion.update({
+              where: { id: current.promotionId },
+              data: { usedCount: Math.max(0, promo.usedCount - 1) },
+            });
+          }
+          await tx.promotionUsage.deleteMany({
+            where: { orderId: current.id },
+          });
+        }
+
+        // 3. Đánh dấu giao dịch thanh toán thành công là đã hoàn tiền
+        await tx.payment.updateMany({
+          where: {
+            orderId: current.id,
+            status: "SUCCESS",
+          },
+          data: {
+            refundedAt: new Date(),
+            failureReason: "Đơn hàng đã được khách hàng hủy và hoàn tiền.",
+          },
+        });
+      }
+
       const updated = await tx.order.update({
         where: { id: current.id },
-        data: { status: "CANCELLED" },
+        data: {
+          status: "CANCELLED",
+          ...(current.status === "PAID" ? { pointsEarned: 0 } : {}),
+        },
       });
+
       await tx.payment.updateMany({
         where: {
           orderId: current.id,
@@ -1230,14 +1294,19 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           failureReason: "Order was cancelled by the customer.",
         },
       });
+
       await tx.orderStatusHistory.create({
         data: {
           orderId: current.id,
           oldStatus: current.status,
           newStatus: "CANCELLED",
-          note: "Người dùng hủy đơn hàng.",
+          note:
+            current.status === "PAID"
+              ? "Khách hàng hủy đơn đã thanh toán (chưa pha chế)."
+              : "Người dùng hủy đơn hàng.",
         },
       });
+
       return tx.order.findUnique({
         where: { id: updated.id },
         include: {
